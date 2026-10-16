@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+:root {
+  --background: #12100e;
+  --foreground: #f4efe6;
+  --card: #1c1916;
+  --line: #3a332c;
+  --accent: #e15a3a;
+  --muted: #b3a89a;
+  --good: #d6c07a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --color-good: var(--good);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+}
+
+body {
+  background-color: var(--background);
+  background-image:
+    linear-gradient(180deg, rgba(18, 16, 14, 0.78), rgba(18, 16, 14, 0.9) 32%, rgba(12, 10, 9, 0.94)),
+    url("/media/table-bg.jpg");
+  background-position: center top;
+  background-size: cover;
+  background-repeat: no-repeat;
+  color: var(--foreground);
+  font-family: var(--font-sans), sans-serif;
+}
+
+@media (min-width: 768px) {
+  body {
+    background-attachment: fixed;
+  }
+}
+
+input,
+select,
+button {
+  font: inherit;
+}

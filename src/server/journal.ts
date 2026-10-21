@@ -47,13 +47,13 @@ const setInput = z
       .max(600, "bad_hold")
       .nullable()
       .optional(),
-    elbowPain: z
-      .number({ invalid_type_error: "bad_pain" })
-      .int("bad_pain")
-      .min(0, "bad_pain")
-      .max(10, "bad_pain")
+    setCount: z
+      .number({ invalid_type_error: "bad_sets" })
+      .int("bad_sets")
+      .min(1, "bad_sets")
+      .max(20, "bad_sets")
       .optional()
-      .default(0),
+      .default(1),
     blockHeight: z.enum(asEnum(BLOCK_HEIGHTS), { message: "bad_block" }),
     band: z.enum(asEnum(BANDS), { message: "bad_band" }).nullable().optional(),
     trainedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "bad_date"),
@@ -96,7 +96,7 @@ export type SetView = {
   weightKg: number;
   reps: number;
   holdSeconds: number | null;
-  elbowPain: number;
+  setCount: number;
   blockHeight: string;
   band: string | null;
   trainedOn: string;
@@ -175,7 +175,7 @@ export async function addSet(db: JournalDb, input: unknown): Promise<SetView> {
     arm: parsed.data.arm,
     weightGrams,
     reps,
-    elbowPain: parsed.data.elbowPain,
+    setCount: parsed.data.setCount,
     trainedOn: parsed.data.trainedOn,
     createdAt: new Date(),
     exercise: parsed.data.exercise,
@@ -191,7 +191,7 @@ export async function addSet(db: JournalDb, input: unknown): Promise<SetView> {
       arm: parsed.data.arm,
       weightGrams,
       reps,
-      elbowPain: parsed.data.elbowPain,
+      setCount: parsed.data.setCount,
       trainedOn: parsed.data.trainedOn,
       exercise: parsed.data.exercise,
       blockHeight: parsed.data.blockHeight,
@@ -286,7 +286,7 @@ type SetRow = {
   arm: string;
   weightGrams: number;
   reps: number;
-  elbowPain: number;
+  setCount: number;
   trainedOn: string;
   exercise: string | null;
   blockHeight: string | null;
@@ -305,7 +305,7 @@ function toSetView(row: SetRow, handle: HandleRow): SetView {
     weightKg: row.weightGrams / 1000,
     reps: row.reps,
     holdSeconds: row.holdSeconds,
-    elbowPain: row.elbowPain,
+    setCount: row.setCount,
     blockHeight: row.blockHeight ?? "",
     band: row.band,
     trainedOn: row.trainedOn,

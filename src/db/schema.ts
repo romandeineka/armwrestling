@@ -16,7 +16,7 @@ export const sets = pgTable("sets", {
   arm: text("arm").notNull(),
   weightGrams: integer("weight_grams").notNull(),
   reps: integer("reps").notNull(),
-  elbowPain: integer("elbow_pain").notNull().default(0),
+  setCount: integer("set_count").notNull().default(1),
   trainedOn: date("trained_on", { mode: "string" }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   exercise: text("exercise"),

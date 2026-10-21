@@ -37,7 +37,7 @@ export function JournalBoard() {
   const [weightKg, setWeightKg] = useState("");
   const [reps, setReps] = useState("");
   const [holdSeconds, setHoldSeconds] = useState("");
-  const [elbowPain, setElbowPain] = useState("0");
+  const [setCount, setSetCount] = useState("");
   const [blockHeight, setBlockHeight] = useState<BlockHeight | "">("");
   const [band, setBand] = useState<BandId | "">("");
   const [trainedOn, setTrainedOn] = useState("");
@@ -82,7 +82,7 @@ export function JournalBoard() {
           weightKg: Number(weightKg.replace(",", ".")),
           reps: isometric ? undefined : Number(reps),
           holdSeconds: isometric ? Number(holdSeconds) : null,
-          elbowPain: Number(elbowPain),
+          setCount: Number(setCount),
           blockHeight,
           band: band || null,
           trainedOn,
@@ -91,13 +91,15 @@ export function JournalBoard() {
       const data = (await response.json()) as { error?: string };
       if (!response.ok) {
         const code = data.error ?? "save_failed";
-        setError(t.errors[code as keyof Messages["errors"]] ?? t.errors.save_failed);
+        setError(
+          t.errors[code as keyof Messages["errors"]] ?? t.errors.save_failed,
+        );
         return;
       }
       setWeightKg("");
       setReps("");
+      setSetCount("");
       setHoldSeconds("");
-      setElbowPain("0");
       await load();
     } finally {
       setPending(false);
@@ -109,21 +111,45 @@ export function JournalBoard() {
       <header className="grid items-end gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs tracking-[0.28em] text-muted uppercase">{t.kicker}</p>
-            <div className="flex rounded-full border border-line bg-card p-1" aria-label={t.language}>
-              <LangButton current={locale} value="uk" label="UA" onPick={setLocale} />
-              <LangButton current={locale} value="en" label="EN" onPick={setLocale} />
+            <p className="text-xs tracking-[0.28em] text-muted uppercase">
+              {t.kicker}
+            </p>
+            <div
+              className="flex rounded-full border border-line bg-card p-1"
+              aria-label={t.language}
+            >
+              <LangButton
+                current={locale}
+                value="uk"
+                label="UA"
+                onPick={setLocale}
+              />
+              <LangButton
+                current={locale}
+                value="en"
+                label="EN"
+                onPick={setLocale}
+              />
             </div>
           </div>
-          <h1 className="font-display text-5xl tracking-tight text-foreground uppercase">{t.title}</h1>
+          <h1 className="font-display text-5xl tracking-tight text-foreground uppercase">
+            {t.title}
+          </h1>
           <p className="max-w-xl text-muted">{t.intro}</p>
         </div>
         <figure className="overflow-hidden rounded-2xl border border-line shadow-lg">
-          <img src="/media/table-side.jpg" alt={t.tableAlt} className="h-44 w-full object-cover" />
+          <img
+            src="/media/table-side.jpg"
+            alt={t.tableAlt}
+            className="h-44 w-full object-cover"
+          />
         </figure>
       </header>
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-5 rounded-2xl border border-line bg-card/95 p-5">
+      <form
+        onSubmit={onSubmit}
+        className="flex flex-col gap-5 rounded-2xl border border-line bg-card/95 p-5"
+      >
         <h2 className="font-display text-2xl uppercase">{t.newSet}</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm text-muted">
@@ -140,7 +166,9 @@ export function JournalBoard() {
             {t.exercise}
             <select
               value={exercise}
-              onChange={(event) => setExercise(event.target.value as ExerciseId)}
+              onChange={(event) =>
+                setExercise(event.target.value as ExerciseId)
+              }
               className="rounded-lg border border-line bg-background px-3 py-2 text-foreground"
             >
               {(Object.keys(t.exercises) as ExerciseId[]).map((id) => (
@@ -168,7 +196,11 @@ export function JournalBoard() {
                   }`}
                 >
                   {handle.image ? (
-                    <img src={handle.image} alt="" className="h-16 w-full object-cover" />
+                    <img
+                      src={handle.image}
+                      alt=""
+                      className="h-16 w-full object-cover"
+                    />
                   ) : null}
                   <span className="block px-1.5 py-1 text-center text-[11px] leading-tight text-foreground">
                     {label}
@@ -180,8 +212,18 @@ export function JournalBoard() {
         </fieldset>
 
         <div className="flex gap-2">
-          <ArmButton current={arm} value="right" onPick={setArm} label={t.right} />
-          <ArmButton current={arm} value="left" onPick={setArm} label={t.left} />
+          <ArmButton
+            current={arm}
+            value="right"
+            onPick={setArm}
+            label={t.right}
+          />
+          <ArmButton
+            current={arm}
+            value="left"
+            onPick={setArm}
+            label={t.left}
+          />
         </div>
 
         <div className="grid gap-5 lg:grid-cols-2">
@@ -210,9 +252,17 @@ export function JournalBoard() {
           <fieldset className="flex flex-col gap-2">
             <legend className="text-sm text-muted">{t.band}</legend>
             <p className="text-xs text-muted">{t.bandHint}</p>
-            <img src="/media/resistance-bands.jpg" alt={t.bandsAlt} className="h-28 w-full rounded-lg object-cover" />
+            <img
+              src="/media/resistance-bands.jpg"
+              alt={t.bandsAlt}
+              className="h-28 w-full rounded-lg object-cover"
+            />
             <div className="grid grid-cols-2 gap-1">
-              <ChoiceButton active={band === ""} label={t.bandNone} onPick={() => setBand("")} />
+              <ChoiceButton
+                active={band === ""}
+                label={t.bandNone}
+                onPick={() => setBand("")}
+              />
               {BANDS.map((id) => (
                 <button
                   key={id}
@@ -233,13 +283,38 @@ export function JournalBoard() {
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          <NumberField label={t.kg} value={weightKg} onChange={setWeightKg} step="0.5" />
+          <NumberField
+            label={t.kg}
+            value={weightKg}
+            onChange={setWeightKg}
+            step="0.5"
+          />
+          <NumberField
+            label={t.setCount}
+            value={setCount}
+            onChange={setSetCount}
+            step="1"
+            min="1"
+            max="20"
+          />
           {isometric ? (
-            <NumberField label={t.seconds} value={holdSeconds} onChange={setHoldSeconds} step="1" min="1" max="600" />
+            <NumberField
+              label={t.seconds}
+              value={holdSeconds}
+              onChange={setHoldSeconds}
+              step="1"
+              min="1"
+              max="600"
+            />
           ) : (
-            <NumberField label={t.reps} value={reps} onChange={setReps} step="1" min="1" />
+            <NumberField
+              label={t.reps}
+              value={reps}
+              onChange={setReps}
+              step="1"
+              min="1"
+            />
           )}
-          <NumberField label={t.elbow} value={elbowPain} onChange={setElbowPain} step="1" min="0" max="10" />
         </div>
         {error ? <p className="text-sm text-accent">{error}</p> : null}
         <button
@@ -258,27 +333,39 @@ export function JournalBoard() {
         ) : (
           <ul className="mt-4 divide-y divide-line">
             {journal.sets.map((set) => (
-              <li key={set.id} className="flex items-center justify-between gap-4 py-3">
+              <li
+                key={set.id}
+                className="flex items-center justify-between gap-4 py-3"
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   {set.image ? (
-                    <img src={set.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+                    <img
+                      src={set.image}
+                      alt=""
+                      className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                    />
                   ) : null}
                   <div className="min-w-0">
                     <p className="text-foreground">
-                      {named(t.exercises, set.exercise)} · {equipmentLabel(t, set.handleId, set.handleName)} ·{" "}
+                      {named(t.exercises, set.exercise)} ·{" "}
+                      {equipmentLabel(t, set.handleId, set.handleName)} ·{" "}
                       {set.arm === "left" ? t.left : t.right}
                     </p>
                     <p className="text-sm text-muted">
                       {formatDate(set.trainedOn)}
-                      {set.blockHeight ? ` · ${named(t.heights, set.blockHeight)}` : ""}
+                      {set.blockHeight
+                        ? ` · ${named(t.heights, set.blockHeight)}`
+                        : ""}
                       {set.band ? ` · ${named(t.bands, set.band)}` : ""}
-                      {set.elbowPain > 0 ? ` · ${t.elbow.toLowerCase()} ${set.elbowPain}` : ""}
                     </p>
                   </div>
                 </div>
                 <p className="shrink-0 font-mono text-lg text-good">
-                  {formatKg(set.weightKg, locale)} {t.kg.toLowerCase()} ×{" "}
-                  {set.holdSeconds != null ? `${set.holdSeconds} ${t.secondsShort}` : set.reps}
+                  {formatKg(set.weightKg, locale)} {t.kg.toLowerCase()} ·{" "}
+                  {set.setCount} ×{" "}
+                  {set.holdSeconds != null
+                    ? `${set.holdSeconds} ${t.secondsShort}`
+                    : set.reps}
                 </p>
               </li>
             ))}
@@ -300,7 +387,8 @@ export function JournalBoard() {
                   className="flex items-baseline justify-between gap-4"
                 >
                   <span>
-                    {named(t.exercises, record.exercise)} · {equipmentLabel(t, record.handleId, record.handleName)} ·{" "}
+                    {named(t.exercises, record.exercise)} ·{" "}
+                    {equipmentLabel(t, record.handleId, record.handleName)} ·{" "}
                     {record.arm === "left" ? t.left : t.right}
                   </span>
                   <span className="font-mono text-good">
@@ -321,7 +409,10 @@ export function JournalBoard() {
           ) : (
             <ul className="mt-4 flex flex-wrap gap-2">
               {journal.missingExercises.map((id) => (
-                <li key={id} className="rounded-full border border-line px-3 py-1 text-sm text-muted">
+                <li
+                  key={id}
+                  className="rounded-full border border-line px-3 py-1 text-sm text-muted"
+                >
                   {t.exercises[id]}
                 </li>
               ))}
@@ -368,7 +459,14 @@ function ArmButton({
   label: string;
   onPick: (arm: Arm) => void;
 }) {
-  return <ChoiceButton active={current === value} label={label} onPick={() => onPick(value)} wide />;
+  return (
+    <ChoiceButton
+      active={current === value}
+      label={label}
+      onPick={() => onPick(value)}
+      wide
+    />
+  );
 }
 
 function ChoiceButton({
@@ -387,7 +485,9 @@ function ChoiceButton({
       type="button"
       onClick={onPick}
       className={`${wide ? "flex-1" : ""} rounded-lg border px-3 py-2 text-sm ${
-        active ? "border-accent bg-accent text-background" : "border-line bg-background text-foreground"
+        active
+          ? "border-accent bg-accent text-background"
+          : "border-line bg-background text-foreground"
       }`}
     >
       {label}

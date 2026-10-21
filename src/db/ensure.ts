@@ -13,7 +13,7 @@ export async function ensureSchema(exec: (statement: string) => Promise<unknown>
       arm text NOT NULL,
       weight_grams integer NOT NULL,
       reps integer NOT NULL,
-      elbow_pain integer NOT NULL DEFAULT 0,
+      set_count integer NOT NULL DEFAULT 1,
       trained_on date NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       exercise text,
@@ -26,6 +26,9 @@ export async function ensureSchema(exec: (statement: string) => Promise<unknown>
     `ALTER TABLE sets ADD COLUMN IF NOT EXISTS block_height text`,
     `ALTER TABLE sets ADD COLUMN IF NOT EXISTS band text`,
     `ALTER TABLE sets ADD COLUMN IF NOT EXISTS hold_seconds integer`,
+    `ALTER TABLE sets ADD COLUMN IF NOT EXISTS set_count integer NOT NULL DEFAULT 1`,
+    `ALTER TABLE sets DROP COLUMN IF EXISTS elbow_pain`,
+    `UPDATE sets SET exercise = 'imitation_wrestling' WHERE exercise = 'imitation'`,
   ];
 
   for (const statement of statements) {

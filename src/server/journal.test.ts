@@ -15,7 +15,7 @@ describe("журнал підходів", () => {
       arm: "right",
       weightKg: 20,
       reps: 5,
-      elbowPain: 0,
+      setCount: 3,
       blockHeight: "highest",
       band: "red",
       trainedOn: "2026-10-14",
@@ -53,6 +53,7 @@ describe("журнал підходів", () => {
     assert.equal(journal.sets[0]?.weightKg, 18);
     assert.equal(journal.sets[2]?.band, "red");
     assert.equal(journal.sets[2]?.blockHeight, "highest");
+    assert.equal(journal.sets[2]?.setCount, 3);
   });
 
   it("піднімає рекорд, коли вага з десятими більша", async () => {
@@ -71,7 +72,7 @@ describe("журнал підходів", () => {
 
     const journal = await getJournal(db, "2026-10-14");
     assert.equal(journal.records[0]?.weightKg, 22.5);
-    assert.equal(journal.sets[0]?.elbowPain, 0);
+    assert.equal(journal.sets[0]?.setCount, 1);
     assert.equal(journal.sets[0]?.band, null);
   });
 
@@ -90,6 +91,8 @@ describe("журнал підходів", () => {
 
     await assert.rejects(addSet(db, { ...valid, weightKg: 0 }), /bad_weight/);
     await assert.rejects(addSet(db, { ...valid, reps: 0 }), /bad_reps/);
+    await assert.rejects(addSet(db, { ...valid, setCount: 0 }), /bad_sets/);
+    await assert.rejects(addSet(db, { ...valid, setCount: 2.5 }), /bad_sets/);
     await assert.rejects(addSet(db, { ...valid, handleId: "немає-такої" }), /bad_handle/);
     await assert.rejects(addSet(db, { ...valid, trainedOn: "2026-02-31" }), /bad_date/);
     await assert.rejects(addSet(db, { ...valid, blockHeight: "middle" }), /bad_block/);

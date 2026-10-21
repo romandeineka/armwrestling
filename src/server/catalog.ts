@@ -7,7 +7,7 @@ export const EXERCISE_IDS = [
   "cupping_hook",
   "back_pressure",
   "side_pressure",
-  "imitation",
+  "imitation_wrestling",
   "table_riser",
   "finger_curl",
   "shoulder_internal_rotation",
@@ -35,7 +35,12 @@ export const EQUIPMENT = [
 
 export type EquipmentId = (typeof EQUIPMENT)[number]["id"];
 
-export const BLOCK_HEIGHTS = ["highest", "above_mid", "below_mid", "lowest"] as const;
+export const BLOCK_HEIGHTS = [
+  "highest",
+  "above_mid",
+  "below_mid",
+  "lowest",
+] as const;
 
 export type BlockHeight = (typeof BLOCK_HEIGHTS)[number];
 

@@ -23,4 +23,5 @@ export const sets = pgTable("sets", {
   blockHeight: text("block_height"),
   band: text("band"),
   holdSeconds: integer("hold_seconds"),
+  videoUrl: text("video_url"),
 });

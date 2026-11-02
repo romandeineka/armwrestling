@@ -18,8 +18,8 @@ const display = Oswald({
 });
 
 export const metadata: Metadata = {
-  title: "Журнал столу",
-  description: "Підходи на столі й блоці для армреслінгу",
+  title: "Журнал рекордів",
+  description: "Рекорди у вправах для армреслінгу з відео виконання",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

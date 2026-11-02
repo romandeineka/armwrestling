@@ -6,6 +6,7 @@ export const EXERCISE_IDS = [
   "cupping_top_roll",
   "cupping_hook",
   "back_pressure",
+  "radial_pull",
   "side_pressure",
   "imitation_wrestling",
   "table_riser",
@@ -52,11 +53,4 @@ export function kyivToday(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Kyiv",
   }).format(now);
-}
-
-export function windowStart(today: string) {
-  const [year, month, day] = today.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() - 6);
-  return date.toISOString().slice(0, 10);
 }

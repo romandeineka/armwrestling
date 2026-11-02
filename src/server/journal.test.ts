@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { EQUIPMENT } from "./catalog";
-import { addSet, getJournal, seedHandles } from "./journal";
+import { addSet, attachVideo, getJournal, seedHandles } from "./journal";
 import { createTestDb } from "./test-db";
 
-describe("журнал підходів", () => {
-  it("зберігає підхід і рахує рекорд як найбільшу вагу на вправу, ручку і руку", async () => {
+const BLOB_VIDEO = "https://abc123.public.blob.vercel-storage.com/records/video-x1y2.mp4";
+
+describe("журнал рекордів", () => {
+  it("показує найкращу спробу як рекорд, а решту як історію для вправи, ручки і руки", async () => {
     const db = await createTestDb();
     const handleId = await seedOne(db, "thin-handle");
 
@@ -27,7 +29,7 @@ describe("журнал підходів", () => {
       weightKg: 15,
       reps: 8,
       blockHeight: "highest",
-      trainedOn: "2026-10-14",
+      trainedOn: "2026-10-20",
     });
     await addSet(db, {
       handleId,
@@ -39,7 +41,7 @@ describe("журнал підходів", () => {
       trainedOn: "2026-10-14",
     });
 
-    const journal = await getJournal(db, "2026-10-14");
+    const journal = await getJournal(db);
     const right = journal.records.find(
       (record) => record.handleId === handleId && record.arm === "right",
     );
@@ -47,33 +49,36 @@ describe("журнал підходів", () => {
       (record) => record.handleId === handleId && record.arm === "left",
     );
 
-    assert.equal(right?.weightKg, 20);
-    assert.equal(left?.weightKg, 18);
-    assert.equal(journal.sets.length, 3);
-    assert.equal(journal.sets[0]?.weightKg, 18);
-    assert.equal(journal.sets[2]?.band, "red");
-    assert.equal(journal.sets[2]?.blockHeight, "highest");
-    assert.equal(journal.sets[2]?.setCount, 3);
+    assert.equal(journal.records.length, 2);
+    assert.equal(right?.best.weightKg, 20);
+    assert.equal(right?.best.setCount, 3);
+    assert.equal(right?.best.band, "red");
+    assert.equal(right?.history.length, 1);
+    assert.equal(right?.history[0]?.weightKg, 15);
+    assert.equal(left?.best.weightKg, 18);
+    assert.equal(left?.history.length, 0);
   });
 
-  it("піднімає рекорд, коли вага з десятими більша", async () => {
+  it("при однаковій вазі рекордом стає спроба з більшою кількістю повторів", async () => {
     const db = await createTestDb();
     const handleId = await seedOne(db, "cup");
-
-    await addSet(db, {
+    const base = {
       handleId,
       exercise: "cupping",
-      arm: "right",
+      arm: "right" as const,
       weightKg: 22.5,
-      reps: 3,
-      blockHeight: "above_mid",
+      blockHeight: "above_mid" as const,
       trainedOn: "2026-10-14",
-    });
+    };
 
-    const journal = await getJournal(db, "2026-10-14");
-    assert.equal(journal.records[0]?.weightKg, 22.5);
-    assert.equal(journal.sets[0]?.setCount, 1);
-    assert.equal(journal.sets[0]?.band, null);
+    await addSet(db, { ...base, reps: 3 });
+    await addSet(db, { ...base, reps: 6 });
+
+    const journal = await getJournal(db);
+    assert.equal(journal.records[0]?.best.weightKg, 22.5);
+    assert.equal(journal.records[0]?.best.reps, 6);
+    assert.equal(journal.records[0]?.best.setCount, 1);
+    assert.equal(journal.records[0]?.best.videoUrl, null);
   });
 
   it("відхиляє нульову вагу, нульові повтори, чужу ручку і неіснуючу дату", async () => {
@@ -128,41 +133,62 @@ describe("журнал підходів", () => {
     );
   });
 
-  it("показує вправу пропущеною, якщо за останні 7 днів її не було", async () => {
+  it("зберігає відео з Vercel Blob і не приймає посилання на інші сайти", async () => {
     const db = await createTestDb();
-    await seedHandles(db);
-
-    await addSet(db, {
-      handleId: "thin-handle",
+    const handleId = await seedOne(db, "video");
+    const valid = {
+      handleId,
       exercise: "pronation",
-      arm: "right",
-      weightKg: 12,
-      reps: 6,
-      blockHeight: "highest",
-      trainedOn: "2026-10-08",
-    });
-    await addSet(db, {
-      handleId: "thin-handle",
-      exercise: "cupping",
-      arm: "right",
-      weightKg: 12,
-      reps: 6,
-      blockHeight: "highest",
-      trainedOn: "2026-10-07",
+      arm: "right" as const,
+      weightKg: 30,
+      reps: 2,
+      blockHeight: "highest" as const,
+      trainedOn: "2026-10-14",
+    };
+
+    const created = await addSet(db, { ...valid, videoUrl: BLOB_VIDEO });
+    assert.equal(created.videoUrl, BLOB_VIDEO);
+
+    await assert.rejects(
+      addSet(db, { ...valid, videoUrl: "https://evil.example.com/video.mp4" }),
+      /bad_video/,
+    );
+    await assert.rejects(addSet(db, { ...valid, videoUrl: "не посилання" }), /bad_video/);
+  });
+
+  it("прикріплює відео до вже записаного рекорду", async () => {
+    const db = await createTestDb();
+    const handleId = await seedOne(db, "attach");
+
+    const created = await addSet(db, {
+      handleId,
+      exercise: "supination",
+      arm: "left",
+      weightKg: 14,
+      reps: 4,
+      blockHeight: "lowest",
+      trainedOn: "2026-10-14",
     });
 
-    const journal = await getJournal(db, "2026-10-14");
+    await attachVideo(db, created.id, { videoUrl: BLOB_VIDEO });
+    const journal = await getJournal(db);
+    assert.equal(journal.records[0]?.best.videoUrl, BLOB_VIDEO);
 
-    assert.equal(journal.missingExercises.includes("pronation"), false);
-    assert.equal(journal.missingExercises.includes("cupping"), true);
-    assert.equal(journal.missingExercises.includes("back_pressure"), true);
+    await assert.rejects(
+      attachVideo(db, "немає-такого", { videoUrl: BLOB_VIDEO }),
+      /not_found/,
+    );
+    await assert.rejects(
+      attachVideo(db, created.id, { videoUrl: "https://evil.example.com/v.mp4" }),
+      /bad_video/,
+    );
   });
 
   it("не дублює стартові ручки, якщо вони вже є", async () => {
     const db = await createTestDb();
     await seedHandles(db);
     await seedHandles(db);
-    const journal = await getJournal(db, "2026-10-14");
+    const journal = await getJournal(db);
     assert.equal(journal.handles.length, EQUIPMENT.length);
   });
 });

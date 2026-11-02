@@ -1,4 +1,4 @@
-import { desc, eq, gte, max } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { handles, sets } from "@/db/schema";
 import type { JournalDb } from "@/db/types";
@@ -10,8 +10,6 @@ import {
   ISOMETRIC_EXERCISE,
   type BandId,
   type EquipmentId,
-  type ExerciseId,
-  windowStart,
 } from "./catalog";
 
 export class JournalError extends Error {
@@ -24,6 +22,12 @@ export class JournalError extends Error {
 function asEnum<T extends string>(values: readonly T[]): [T, ...T[]] {
   return values as unknown as [T, ...T[]];
 }
+
+// Приймаємо лише посилання на наше сховище Vercel Blob, а не будь-який сайт.
+const videoUrl = z
+  .string({ invalid_type_error: "bad_video" })
+  .url("bad_video")
+  .refine(isBlobUrl, "bad_video");
 
 const setInput = z
   .object({
@@ -57,6 +61,7 @@ const setInput = z
     blockHeight: z.enum(asEnum(BLOCK_HEIGHTS), { message: "bad_block" }),
     band: z.enum(asEnum(BANDS), { message: "bad_band" }).nullable().optional(),
     trainedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "bad_date"),
+    videoUrl: videoUrl.nullable().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.exercise === ISOMETRIC_EXERCISE) {
@@ -77,6 +82,8 @@ const setInput = z
       });
     }
   });
+
+const videoInput = z.object({ videoUrl });
 
 export type Arm = "left" | "right";
 
@@ -100,21 +107,25 @@ export type SetView = {
   blockHeight: string;
   band: string | null;
   trainedOn: string;
+  videoUrl: string | null;
 };
 
+// Одна картка у вкладці «Мої рекорди»: найкраща спроба і всі інші для тієї ж
+// вправи, ручки і руки.
 export type RecordView = {
+  key: string;
   handleId: string;
   handleName: string;
+  image: string | null;
   exercise: string;
   arm: Arm;
-  weightKg: number;
+  best: SetView;
+  history: SetView[];
 };
 
 export type JournalView = {
   handles: HandleView[];
-  sets: SetView[];
   records: RecordView[];
-  missingExercises: ExerciseId[];
 };
 
 export async function seedHandles(db: JournalDb) {
@@ -163,73 +174,108 @@ export async function addSet(db: JournalDb, input: unknown): Promise<SetView> {
   }
 
   const isometric = parsed.data.exercise === ISOMETRIC_EXERCISE;
-  const id = crypto.randomUUID();
-  const weightGrams = Math.round(parsed.data.weightKg * 1000);
-  const reps = isometric ? 0 : (parsed.data.reps ?? 0);
-  const holdSeconds = isometric ? (parsed.data.holdSeconds ?? null) : null;
-  const band = (parsed.data.band ?? null) as BandId | null;
-
-  await db.insert(sets).values({
-    id,
+  const row = {
+    id: crypto.randomUUID(),
     handleId: handle.id,
     arm: parsed.data.arm,
-    weightGrams,
-    reps,
+    weightGrams: Math.round(parsed.data.weightKg * 1000),
+    reps: isometric ? 0 : (parsed.data.reps ?? 0),
     setCount: parsed.data.setCount,
     trainedOn: parsed.data.trainedOn,
-    createdAt: new Date(),
     exercise: parsed.data.exercise,
     blockHeight: parsed.data.blockHeight,
-    band,
-    holdSeconds,
-  });
+    band: (parsed.data.band ?? null) as BandId | null,
+    holdSeconds: isometric ? (parsed.data.holdSeconds ?? null) : null,
+    videoUrl: parsed.data.videoUrl ?? null,
+  };
 
-  return toSetView(
-    {
-      id,
-      handleId: handle.id,
-      arm: parsed.data.arm,
-      weightGrams,
-      reps,
-      setCount: parsed.data.setCount,
-      trainedOn: parsed.data.trainedOn,
-      exercise: parsed.data.exercise,
-      blockHeight: parsed.data.blockHeight,
-      band,
-      holdSeconds,
-    },
-    handle,
-  );
+  await db.insert(sets).values({ ...row, createdAt: new Date() });
+
+  return toSetView(row, handle);
 }
 
-export async function getJournal(db: JournalDb, today: string): Promise<JournalView> {
+export async function attachVideo(
+  db: JournalDb,
+  id: string,
+  input: unknown,
+): Promise<void> {
+  const parsed = videoInput.safeParse(input);
+  if (!parsed.success) {
+    throw new JournalError(parsed.error.issues[0]?.message ?? "invalid");
+  }
+
+  const [existing] = await db
+    .select({ id: sets.id })
+    .from(sets)
+    .where(eq(sets.id, id))
+    .limit(1);
+
+  if (!existing) {
+    throw new JournalError("not_found");
+  }
+
+  await db
+    .update(sets)
+    .set({ videoUrl: parsed.data.videoUrl })
+    .where(eq(sets.id, id));
+}
+
+export async function getJournal(db: JournalDb): Promise<JournalView> {
   const handleRows = await db.select().from(handles);
   const handleById = new Map(handleRows.map((handle) => [handle.id, handle]));
-  const equipmentOrder = new Map(EQUIPMENT.map((item, index) => [item.id, index]));
-  const exerciseOrder = new Map(EXERCISE_IDS.map((exercise, index) => [exercise, index]));
+  const equipmentOrder = new Map<string, number>(
+    EQUIPMENT.map((item, index) => [item.id, index]),
+  );
+  const exerciseOrder = new Map<string, number>(
+    EXERCISE_IDS.map((exercise, index) => [exercise, index]),
+  );
 
-  const setRows = await db.select().from(sets).orderBy(desc(sets.createdAt)).limit(40);
-
-  const recordRows = await db
-    .select({
-      handleId: sets.handleId,
-      exercise: sets.exercise,
-      arm: sets.arm,
-      weightGrams: max(sets.weightGrams),
-    })
+  // База сортує від найкращої спроби: важча вага, потім більше повторів або
+  // довше утримання. Тому перша спроба в кожній групі і є рекордом.
+  const setRows = await db
+    .select()
     .from(sets)
-    .groupBy(sets.handleId, sets.exercise, sets.arm);
+    .orderBy(
+      desc(sets.weightGrams),
+      desc(sets.reps),
+      desc(sets.holdSeconds),
+      desc(sets.trainedOn),
+    );
 
-  const start = windowStart(today);
-  const weekRows = await db
-    .select({ exercise: sets.exercise })
-    .from(sets)
-    .where(gte(sets.trainedOn, start));
+  const groups = new Map<string, RecordView>();
+  for (const row of setRows) {
+    const handle = handleById.get(row.handleId);
+    if (!handle || !row.exercise || (row.arm !== "left" && row.arm !== "right")) {
+      continue;
+    }
+    const view = toSetView(row, handle);
+    const key = `${row.exercise}:${row.handleId}:${row.arm}`;
+    const group = groups.get(key);
+    if (group) {
+      group.history.push(view);
+    } else {
+      groups.set(key, {
+        key,
+        handleId: row.handleId,
+        handleName: handle.name,
+        image: handle.image,
+        exercise: row.exercise,
+        arm: row.arm,
+        best: view,
+        history: [],
+      });
+    }
+  }
 
-  const covered = new Set(
-    weekRows
-      .map((row) => row.exercise)
-      .filter((exercise): exercise is string => Boolean(exercise)),
+  const records = [...groups.values()];
+  for (const record of records) {
+    record.history.sort((a, b) => b.trainedOn.localeCompare(a.trainedOn));
+  }
+  records.sort(
+    (a, b) =>
+      (exerciseOrder.get(a.exercise) ?? 99) - (exerciseOrder.get(b.exercise) ?? 99) ||
+      (equipmentOrder.get(a.handleId) ?? 99) - (equipmentOrder.get(b.handleId) ?? 99) ||
+      (a.arm === b.arm ? 0 : a.arm === "right" ? -1 : 1),
   );
 
   return {
@@ -241,36 +287,11 @@ export async function getJournal(db: JournalDb, today: string): Promise<JournalV
         image: handle.image,
       }))
       .sort(
-        (a, b) => (equipmentOrder.get(a.id as EquipmentId) ?? 99) - (equipmentOrder.get(b.id as EquipmentId) ?? 99),
-      ),
-    sets: setRows.flatMap((row) => {
-      const handle = handleById.get(row.handleId);
-      if (!handle || (row.arm !== "left" && row.arm !== "right")) return [];
-      return [toSetView(row, handle)];
-    }),
-    records: recordRows
-      .flatMap((row) => {
-        const handle = handleById.get(row.handleId);
-        const arm = row.arm === "left" || row.arm === "right" ? row.arm : null;
-        if (!handle || row.weightGrams == null || !row.exercise || !arm) {
-          return [];
-        }
-        return [
-          {
-            handleId: row.handleId,
-            handleName: handle.name,
-            exercise: row.exercise,
-            arm: arm as Arm,
-            weightKg: Number(row.weightGrams) / 1000,
-          },
-        ];
-      })
-      .sort(
         (a, b) =>
-          (exerciseOrder.get(a.exercise as ExerciseId) ?? 99) -
-          (exerciseOrder.get(b.exercise as ExerciseId) ?? 99),
+          (equipmentOrder.get(a.id as EquipmentId) ?? 99) -
+          (equipmentOrder.get(b.id as EquipmentId) ?? 99),
       ),
-    missingExercises: EXERCISE_IDS.filter((exercise) => !covered.has(exercise)),
+    records,
   };
 }
 
@@ -292,6 +313,7 @@ type SetRow = {
   blockHeight: string | null;
   band: string | null;
   holdSeconds: number | null;
+  videoUrl: string | null;
 };
 
 function toSetView(row: SetRow, handle: HandleRow): SetView {
@@ -309,7 +331,17 @@ function toSetView(row: SetRow, handle: HandleRow): SetView {
     blockHeight: row.blockHeight ?? "",
     band: row.band,
     trainedOn: row.trainedOn,
+    videoUrl: row.videoUrl,
   };
+}
+
+function isBlobUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.endsWith(".blob.vercel-storage.com");
+  } catch {
+    return false;
+  }
 }
 
 function assertRealDate(value: string) {

@@ -1,7 +1,11 @@
 import { getDb } from "@/db";
 import { attachVideo, JournalError } from "@/server/journal";
+import { requireOwner } from "@/server/session";
 
 export async function PATCH(request: Request, ctx: RouteContext<"/api/sets/[id]">) {
+  const denied = await requireOwner();
+  if (denied) return denied;
+
   const { id } = await ctx.params;
 
   let body: unknown;

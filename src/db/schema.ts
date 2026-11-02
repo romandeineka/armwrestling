@@ -25,3 +25,11 @@ export const sets = pgTable("sets", {
   holdSeconds: integer("hold_seconds"),
   videoUrl: text("video_url"),
 });
+
+// id тут не сам токен з cookie, а його SHA-256. Якщо таблицю хтось прочитає,
+// увійти з цими значеннями він не зможе.
+export const sessions = pgTable("sessions", {
+  id: text("id").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -1,7 +1,11 @@
 import { getDb } from "@/db";
 import { addSet, JournalError } from "@/server/journal";
+import { requireOwner } from "@/server/session";
 
 export async function POST(request: Request) {
+  const denied = await requireOwner();
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await request.json();

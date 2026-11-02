@@ -17,9 +17,12 @@ import type { Arm, JournalView, RecordView, SetView } from "@/server/journal";
 
 type Tab = "new" | "records";
 
-const emptyJournal: JournalView = {
+type BoardData = JournalView & { isOwner: boolean };
+
+const emptyJournal: BoardData = {
   handles: [],
   records: [],
+  isOwner: false,
 };
 
 const BAND_SWATCH: Record<BandId, string> = {
@@ -31,8 +34,11 @@ const BAND_SWATCH: Record<BandId, string> = {
 
 export function JournalBoard() {
   const { locale, setLocale, t } = useLocale();
-  const [tab, setTab] = useState<Tab>("new");
-  const [journal, setJournal] = useState<JournalView>(emptyJournal);
+  const [tab, setTab] = useState<Tab>("records");
+  const [journal, setJournal] = useState<BoardData>(emptyJournal);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [handleId, setHandleId] = useState("");
   const [exercise, setExercise] = useState<ExerciseId>("pronation");
   const [arm, setArm] = useState<Arm>("right");
@@ -57,7 +63,7 @@ export function JournalBoard() {
       setError(t.loadFailed);
       return;
     }
-    const data = (await response.json()) as JournalView;
+    const data = (await response.json()) as BoardData;
     setJournal(data);
     setHandleId((current) => current || data.handles[0]?.id || "");
     setReady(true);
@@ -67,6 +73,30 @@ export function JournalBoard() {
     setTrainedOn(kyivToday());
     void load();
   }, []);
+
+  async function onLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoginError("");
+    const response = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      setLoginError(errorText(t, data.error));
+      return;
+    }
+    setPassword("");
+    setLoginOpen(false);
+    await load();
+  }
+
+  async function onLogout() {
+    await fetch("/api/logout", { method: "POST" });
+    setTab("records");
+    await load();
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -132,24 +162,60 @@ export function JournalBoard() {
             <p className="text-xs tracking-[0.28em] text-muted uppercase">
               {t.kicker}
             </p>
-            <div
-              className="flex rounded-full border border-line bg-card p-1"
-              aria-label={t.language}
-            >
-              <LangButton
-                current={locale}
-                value="uk"
-                label="UA"
-                onPick={setLocale}
-              />
-              <LangButton
-                current={locale}
-                value="en"
-                label="EN"
-                onPick={setLocale}
-              />
+            <div className="flex items-center gap-2">
+              {ready ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    journal.isOwner ? void onLogout() : setLoginOpen((open) => !open)
+                  }
+                  className="rounded-full border border-line px-3 py-1 text-sm text-foreground"
+                >
+                  {journal.isOwner ? t.logout : t.login}
+                </button>
+              ) : null}
+              <div
+                className="flex rounded-full border border-line bg-card p-1"
+                aria-label={t.language}
+              >
+                <LangButton
+                  current={locale}
+                  value="uk"
+                  label="UA"
+                  onPick={setLocale}
+                />
+                <LangButton
+                  current={locale}
+                  value="en"
+                  label="EN"
+                  onPick={setLocale}
+                />
+              </div>
             </div>
           </div>
+          {loginOpen && !journal.isOwner ? (
+            <form onSubmit={onLogin} className="flex flex-wrap items-start gap-2">
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={t.password}
+                autoComplete="current-password"
+                autoFocus
+                required
+                className="rounded-lg border border-line bg-background px-3 py-2 text-foreground"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-accent px-4 py-2 font-medium text-background"
+              >
+                {t.login}
+              </button>
+              {loginError ? (
+                <p className="w-full text-sm text-accent">{loginError}</p>
+              ) : null}
+            </form>
+          ) : null}
           <h1 className="font-display text-5xl tracking-tight text-foreground uppercase">
             {t.title}
           </h1>
@@ -168,11 +234,13 @@ export function JournalBoard() {
         role="tablist"
         className="flex gap-1 self-start rounded-full border border-line bg-card p-1"
       >
-        <TabButton
-          active={tab === "new"}
-          label={t.tabNew}
-          onPick={() => setTab("new")}
-        />
+        {journal.isOwner ? (
+          <TabButton
+            active={tab === "new"}
+            label={t.tabNew}
+            onPick={() => setTab("new")}
+          />
+        ) : null}
         <TabButton
           active={tab === "records"}
           label={t.tabRecords}
@@ -180,7 +248,7 @@ export function JournalBoard() {
         />
       </nav>
 
-      {tab === "new" ? (
+      {tab === "new" && journal.isOwner ? (
         <form
           onSubmit={onSubmit}
           className="flex flex-col gap-5 rounded-2xl border border-line bg-card/95 p-5"
@@ -396,6 +464,7 @@ export function JournalBoard() {
                   record={record}
                   t={t}
                   locale={locale}
+                  canEdit={journal.isOwner}
                   onChanged={load}
                 />
               ))}
@@ -411,11 +480,13 @@ function RecordCard({
   record,
   t,
   locale,
+  canEdit,
   onChanged,
 }: {
   record: RecordView;
   t: Messages;
   locale: Locale;
+  canEdit: boolean;
   onChanged: () => Promise<void>;
 }) {
   const { best } = record;
@@ -455,9 +526,9 @@ function RecordCard({
           preload="metadata"
           className="w-full rounded-lg bg-black"
         />
-      ) : (
+      ) : canEdit ? (
         <AttachVideoButton setId={best.id} t={t} onDone={onChanged} />
-      )}
+      ) : null}
 
       {record.history.length > 0 ? (
         <details className="text-sm">
@@ -483,14 +554,14 @@ function RecordCard({
                   >
                     ▶ {t.video}
                   </a>
-                ) : (
+                ) : canEdit ? (
                   <AttachVideoButton
                     setId={set.id}
                     t={t}
                     onDone={onChanged}
                     compact
                   />
-                )}
+                ) : null}
               </li>
             ))}
           </ul>

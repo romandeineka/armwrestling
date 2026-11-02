@@ -1,10 +1,14 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { requireOwner } from "@/server/session";
 
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 // Відео не проходить через цей сервер. Браузер питає тут дозвіл (токен),
 // а сам файл вантажить напряму у Vercel Blob.
 export async function POST(request: Request) {
+  const denied = await requireOwner();
+  if (denied) return denied;
+
   let body: HandleUploadBody;
   try {
     body = (await request.json()) as HandleUploadBody;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { EQUIPMENT } from "./catalog";
-import { addSet, attachVideo, deleteSet, getJournal, seedHandles, updateSet } from "./journal";
+import { addSet, attachVideo, checkRecord, deleteSet, getJournal, seedHandles, updateSet } from "./journal";
 import { createTestDb } from "./test-db";
 
 const BLOB_VIDEO = "https://abc123.public.blob.vercel-storage.com/records/video-x1y2.mp4";
@@ -123,6 +123,35 @@ describe("журнал рекордів", () => {
 
     await assert.rejects(addSet(db, { ...base, bodyWeightKg: 5 }), /bad_body_weight/);
     await assert.rejects(addSet(db, { ...base, bodyWeightKg: "93" }), /bad_body_weight/);
+  });
+
+  it("визначає перший запис, новий рекорд і звичайну спробу", async () => {
+    const db = await createTestDb();
+    const handleId = await seedOne(db, "pr");
+    const base = {
+      handleId,
+      exercise: "pronation",
+      arm: "right" as const,
+      reps: 3,
+      trainedOn: "2026-11-09",
+    };
+
+    const first = await addSet(db, { ...base, weightKg: 50 });
+    assert.deepEqual(await checkRecord(db, first), { kind: "first", previousBestKg: null });
+
+    const heavier = await addSet(db, { ...base, weightKg: 52.5 });
+    assert.deepEqual(await checkRecord(db, heavier), { kind: "record", previousBestKg: 50 });
+
+    const lighter = await addSet(db, { ...base, weightKg: 45 });
+    assert.equal((await checkRecord(db, lighter)).kind, "none");
+
+    // Та сама вага, але більше повторів: теж рекорд.
+    const moreReps = await addSet(db, { ...base, weightKg: 52.5, reps: 5 });
+    assert.equal((await checkRecord(db, moreReps)).kind, "record");
+
+    // Інша рука рахується окремо.
+    const left = await addSet(db, { ...base, arm: "left", weightKg: 20 });
+    assert.equal((await checkRecord(db, left)).kind, "first");
   });
 
   it("записує рекорд без блока, наприклад з поясом без стола", async () => {

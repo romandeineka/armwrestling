@@ -1,5 +1,5 @@
 import { getDb } from "@/db";
-import { addSet, JournalError } from "@/server/journal";
+import { addSet, checkRecord, JournalError } from "@/server/journal";
 import { requireOwner } from "@/server/session";
 
 export async function POST(request: Request) {
@@ -14,8 +14,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const created = await addSet(await getDb(), body);
-    return Response.json(created, { status: 201 });
+    const db = await getDb();
+    const created = await addSet(db, body);
+    const record = await checkRecord(db, created);
+    return Response.json({ ...created, record }, { status: 201 });
   } catch (error) {
     if (error instanceof JournalError) {
       return Response.json({ error: error.message }, { status: 400 });

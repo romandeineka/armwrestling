@@ -1,4 +1,4 @@
-import { desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { handles, sets } from "@/db/schema";
 import type { JournalDb } from "@/db/types";
@@ -220,6 +220,59 @@ export async function addSet(db: JournalDb, input: unknown): Promise<SetView> {
 }
 
 // Повертає старе відео, щоб маршрут міг прибрати його з Blob, якщо його замінили.
+// first: перша спроба цією рукою в цій вправі на цій ручці.
+// record: краща за попередній рекорд. none: не краща.
+export type RecordCheck = {
+  kind: "first" | "record" | "none";
+  previousBestKg: number | null;
+};
+
+export async function checkRecord(db: JournalDb, set: SetView): Promise<RecordCheck> {
+  // Найкраща з УСІХ ІНШИХ спроб тієї ж вправи, ручки і руки (ne = not equal).
+  const [previous] = await db
+    .select({
+      weightGrams: sets.weightGrams,
+      reps: sets.reps,
+      holdSeconds: sets.holdSeconds,
+    })
+    .from(sets)
+    .where(
+      and(
+        eq(sets.exercise, set.exercise),
+        eq(sets.handleId, set.handleId),
+        eq(sets.arm, set.arm),
+        ne(sets.id, set.id),
+      ),
+    )
+    .orderBy(desc(sets.weightGrams), desc(sets.reps), desc(sets.holdSeconds))
+    .limit(1);
+
+  if (!previous) {
+    return { kind: "first", previousBestKg: null };
+  }
+
+  const current = {
+    weightGrams: Math.round(set.weightKg * 1000),
+    reps: set.reps,
+    holdSeconds: set.holdSeconds,
+  };
+  return {
+    kind: compareAttempts(current, previous) > 0 ? "record" : "none",
+    previousBestKg: previous.weightGrams / 1000,
+  };
+}
+
+type Attempt = { weightGrams: number; reps: number; holdSeconds: number | null };
+
+// Те саме правило, що й сортування в getJournal: вага, потім повтори, потім утримання.
+function compareAttempts(a: Attempt, b: Attempt) {
+  return (
+    a.weightGrams - b.weightGrams ||
+    a.reps - b.reps ||
+    (a.holdSeconds ?? 0) - (b.holdSeconds ?? 0)
+  );
+}
+
 export async function updateSet(
   db: JournalDb,
   id: string,

@@ -13,7 +13,15 @@ import {
   type BlockHeight,
   type ExerciseId,
 } from "@/server/catalog";
-import type { Arm, JournalView, RecordView, SetView } from "@/server/journal";
+import type {
+  Arm,
+  JournalView,
+  RecordCheck,
+  RecordView,
+  SetView,
+} from "@/server/journal";
+
+type SavedSet = SetView & { record?: RecordCheck };
 
 type Tab = "new" | "records";
 
@@ -60,6 +68,7 @@ export function JournalBoard() {
   const [ready, setReady] = useState(false);
   const [filter, setFilter] = useState("");
   const [playing, setPlaying] = useState<string | null>(null);
+  const [celebration, setCelebration] = useState<SavedSet | null>(null);
   const isometric = exercise === ISOMETRIC_EXERCISE;
   // Кнопки фільтра лише для вправ, у яких уже є рекорди, у порядку каталогу.
   const recordExercises = [...new Set(journal.records.map((record) => record.exercise))];
@@ -197,11 +206,13 @@ export function JournalBoard() {
           videoUrl,
         }),
       });
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as SavedSet & { error?: string };
       if (!response.ok) {
         setError(errorText(t, data.error));
         return;
       }
+      // Відповідь на POST містить перевірку рекорду; на PUT (редагування) її немає.
+      setCelebration(data.record && data.record.kind !== "none" ? data : null);
       resetForm();
       await load();
       setTab("records");
@@ -532,6 +543,33 @@ export function JournalBoard() {
         </form>
       ) : (
         <section className="flex flex-col gap-4">
+          {celebration ? (
+            <div className="flex items-start justify-between gap-3 rounded-2xl border border-accent bg-accent/15 p-4">
+              <p className="text-foreground">
+                <span className="font-display text-xl uppercase">
+                  {celebration.record?.kind === "first" ? t.firstRecord : t.newRecord}
+                </span>
+                <br />
+                {named(t.exercises, celebration.exercise)} ·{" "}
+                {equipmentLabel(t, celebration.handleId, celebration.handleName)} ·{" "}
+                {celebration.arm === "left" ? t.left : t.right}:{" "}
+                <span className="font-mono text-good">
+                  {formatKg(celebration.weightKg, locale)} {t.kg.toLowerCase()}
+                </span>
+                {celebration.record?.previousBestKg != null
+                  ? ` (${t.was} ${formatKg(celebration.record.previousBestKg, locale)} ${t.kg.toLowerCase()})`
+                  : ""}
+              </p>
+              <button
+                type="button"
+                onClick={() => setCelebration(null)}
+                aria-label={t.close}
+                className="text-muted hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+          ) : null}
           <p className="text-sm text-muted">{t.recordHint}</p>
           {error ? <p className="text-sm text-accent">{error}</p> : null}
           {!ready ? (

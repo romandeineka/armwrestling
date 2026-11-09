@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { handles, sets } from "@/db/schema";
 import type { JournalDb } from "@/db/types";
@@ -65,6 +65,12 @@ const setInput = z
     band: z.enum(asEnum(BANDS), { message: "bad_band" }).nullable().optional(),
     trainedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "bad_date"),
     videoUrl: videoUrl.nullable().optional(),
+    bodyWeightKg: z
+      .number({ invalid_type_error: "bad_body_weight" })
+      .min(30, "bad_body_weight")
+      .max(300, "bad_body_weight")
+      .nullable()
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.exercise === ISOMETRIC_EXERCISE) {
@@ -111,6 +117,7 @@ export type SetView = {
   band: string | null;
   trainedOn: string;
   videoUrl: string | null;
+  bodyWeightKg: number | null;
 };
 
 // Найкраща спроба однієї руки і всі інші її спроби.
@@ -134,6 +141,8 @@ export type RecordView = {
 export type JournalView = {
   handles: HandleView[];
   records: RecordView[];
+  // Остання записана вага тіла: форма підставляє її, щоб не вводити щоразу.
+  lastBodyWeightKg: number | null;
 };
 
 export async function seedHandles(db: JournalDb) {
@@ -195,6 +204,8 @@ async function parseSet(db: JournalDb, input: unknown) {
     band: (parsed.data.band ?? null) as BandId | null,
     holdSeconds: isometric ? (parsed.data.holdSeconds ?? null) : null,
     videoUrl: parsed.data.videoUrl ?? null,
+    bodyWeightGrams:
+      parsed.data.bodyWeightKg != null ? Math.round(parsed.data.bodyWeightKg * 1000) : null,
   };
   return { values, handle };
 }
@@ -297,6 +308,15 @@ export async function getJournal(db: JournalDb): Promise<JournalView> {
       desc(sets.trainedOn),
     );
 
+  // SELECT body_weight_grams FROM sets WHERE body_weight_grams IS NOT NULL
+  // ORDER BY trained_on DESC, created_at DESC LIMIT 1
+  const [lastBodyWeight] = await db
+    .select({ grams: sets.bodyWeightGrams })
+    .from(sets)
+    .where(isNotNull(sets.bodyWeightGrams))
+    .orderBy(desc(sets.trainedOn), desc(sets.createdAt))
+    .limit(1);
+
   const groups = new Map<string, RecordView>();
   for (const row of setRows) {
     const handle = handleById.get(row.handleId);
@@ -353,6 +373,7 @@ export async function getJournal(db: JournalDb): Promise<JournalView> {
           (equipmentOrder.get(b.id as EquipmentId) ?? 99),
       ),
     records,
+    lastBodyWeightKg: lastBodyWeight?.grams != null ? lastBodyWeight.grams / 1000 : null,
   };
 }
 
@@ -375,6 +396,7 @@ type SetRow = {
   band: string | null;
   holdSeconds: number | null;
   videoUrl: string | null;
+  bodyWeightGrams: number | null;
 };
 
 function toSetView(row: SetRow, handle: HandleRow): SetView {
@@ -393,6 +415,7 @@ function toSetView(row: SetRow, handle: HandleRow): SetView {
     band: row.band,
     trainedOn: row.trainedOn,
     videoUrl: row.videoUrl,
+    bodyWeightKg: row.bodyWeightGrams != null ? row.bodyWeightGrams / 1000 : null,
   };
 }
 

@@ -24,6 +24,7 @@ export const sets = pgTable("sets", {
   band: text("band"),
   holdSeconds: integer("hold_seconds"),
   videoUrl: text("video_url"),
+  bodyWeightGrams: integer("body_weight_grams"),
 });
 
 // id тут не сам токен з cookie, а його SHA-256. Якщо таблицю хтось прочитає,

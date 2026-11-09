@@ -31,6 +31,7 @@ export async function ensureSchema(exec: (statement: string) => Promise<unknown>
     `ALTER TABLE sets DROP COLUMN IF EXISTS elbow_pain`,
     `UPDATE sets SET exercise = 'imitation_wrestling' WHERE exercise = 'imitation'`,
     `ALTER TABLE sets ADD COLUMN IF NOT EXISTS video_url text`,
+    `ALTER TABLE sets ADD COLUMN IF NOT EXISTS body_weight_grams integer`,
     `CREATE TABLE IF NOT EXISTS sessions (
       id text PRIMARY KEY,
       expires_at timestamptz NOT NULL,

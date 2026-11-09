@@ -23,6 +23,7 @@ const emptyJournal: BoardData = {
   handles: [],
   records: [],
   isOwner: false,
+  lastBodyWeightKg: null,
 };
 
 const BAND_SWATCH: Record<BandId, string> = {
@@ -46,6 +47,7 @@ export function JournalBoard() {
   const [reps, setReps] = useState("");
   const [holdSeconds, setHoldSeconds] = useState("");
   const [setCount, setSetCount] = useState("");
+  const [bodyWeight, setBodyWeight] = useState("");
   const [blockHeight, setBlockHeight] = useState<BlockHeight | "">("");
   const [band, setBand] = useState<BandId | "">("");
   const [trainedOn, setTrainedOn] = useState("");
@@ -75,6 +77,10 @@ export function JournalBoard() {
     const data = (await response.json()) as BoardData;
     setJournal(data);
     setHandleId((current) => current || data.handles[0]?.id || "");
+    setBodyWeight(
+      (current) =>
+        current || (data.lastBodyWeightKg != null ? String(data.lastBodyWeightKg) : ""),
+    );
     setReady(true);
   }
 
@@ -131,6 +137,7 @@ export function JournalBoard() {
     setSetCount(String(set.setCount));
     setReps(set.holdSeconds != null ? "" : String(set.reps));
     setHoldSeconds(set.holdSeconds != null ? String(set.holdSeconds) : "");
+    setBodyWeight(set.bodyWeightKg != null ? String(set.bodyWeightKg) : "");
     setTab("new");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -181,6 +188,9 @@ export function JournalBoard() {
           reps: isometric ? undefined : Number(reps),
           holdSeconds: isometric ? Number(holdSeconds) : null,
           setCount: Number(setCount),
+          bodyWeightKg: bodyWeight.trim()
+            ? Number(bodyWeight.replace(",", "."))
+            : null,
           blockHeight: blockHeight || null,
           band: band || null,
           trainedOn,
@@ -449,7 +459,14 @@ export function JournalBoard() {
             </fieldset>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <NumberField
+              label={t.bodyWeight}
+              value={bodyWeight}
+              onChange={setBodyWeight}
+              step="0.1"
+              optional
+            />
             <NumberField
               label={t.kg}
               value={weightKg}
@@ -642,7 +659,7 @@ function RecordCard({
                     <p className="font-mono text-xl text-good">
                       {formatResult(side.best, t, locale)}
                     </p>
-                    <p className="text-sm text-muted">{setDetails(side.best, t)}</p>
+                    <p className="text-sm text-muted">{setDetails(side.best, t, locale)}</p>
                   </>
                 ) : (
                   <p className="font-mono text-xl text-muted">—</p>
@@ -984,6 +1001,7 @@ function NumberField({
   step,
   min,
   max,
+  optional,
 }: {
   label: string;
   value: string;
@@ -991,6 +1009,7 @@ function NumberField({
   step: string;
   min?: string;
   max?: string;
+  optional?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-1 text-sm text-muted">
@@ -1003,7 +1022,7 @@ function NumberField({
         step={step}
         onChange={(event) => onChange(event.target.value)}
         className="rounded-lg border border-line bg-background px-3 py-2 text-foreground"
-        required
+        required={!optional}
       />
     </label>
   );
@@ -1031,11 +1050,17 @@ function formatResult(set: SetView, t: Messages, locale: Locale) {
   return `${formatKg(set.weightKg, locale)} ${t.kg.toLowerCase()} · ${set.setCount} × ${amount}`;
 }
 
-function setDetails(set: SetView, t: Messages) {
+function bodyWeightDetail(set: SetView, t: Messages, locale: Locale) {
+  if (set.bodyWeightKg == null) return "";
+  return `${t.bodyWeightShort} ${formatKg(set.bodyWeightKg, locale)} ${t.kg.toLowerCase()}`;
+}
+
+function setDetails(set: SetView, t: Messages, locale: Locale) {
   return [
     formatDate(set.trainedOn),
     set.blockHeight ? named(t.heights, set.blockHeight) : "",
     set.band ? named(t.bands, set.band) : "",
+    bodyWeightDetail(set, t, locale),
   ]
     .filter(Boolean)
     .join(" · ");

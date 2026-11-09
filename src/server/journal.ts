@@ -155,7 +155,8 @@ export async function seedHandles(db: JournalDb) {
   );
 }
 
-export async function addSet(db: JournalDb, input: unknown): Promise<SetView> {
+// Спільна перевірка для створення і редагування: однакові правила в обох місцях.
+async function parseSet(db: JournalDb, input: unknown) {
   const parsed = setInput.safeParse(input);
   if (!parsed.success) {
     throw new JournalError(parsed.error.issues[0]?.message ?? "invalid");
@@ -174,8 +175,7 @@ export async function addSet(db: JournalDb, input: unknown): Promise<SetView> {
   }
 
   const isometric = parsed.data.exercise === ISOMETRIC_EXERCISE;
-  const row = {
-    id: crypto.randomUUID(),
+  const values = {
     handleId: handle.id,
     arm: parsed.data.arm,
     weightGrams: Math.round(parsed.data.weightKg * 1000),
@@ -188,10 +188,57 @@ export async function addSet(db: JournalDb, input: unknown): Promise<SetView> {
     holdSeconds: isometric ? (parsed.data.holdSeconds ?? null) : null,
     videoUrl: parsed.data.videoUrl ?? null,
   };
+  return { values, handle };
+}
+
+export async function addSet(db: JournalDb, input: unknown): Promise<SetView> {
+  const { values, handle } = await parseSet(db, input);
+  const row = { id: crypto.randomUUID(), ...values };
 
   await db.insert(sets).values({ ...row, createdAt: new Date() });
 
   return toSetView(row, handle);
+}
+
+// Повертає старе відео, щоб маршрут міг прибрати його з Blob, якщо його замінили.
+export async function updateSet(
+  db: JournalDb,
+  id: string,
+  input: unknown,
+): Promise<{ set: SetView; previousVideoUrl: string | null }> {
+  const { values, handle } = await parseSet(db, input);
+
+  const [existing] = await db
+    .select({ videoUrl: sets.videoUrl })
+    .from(sets)
+    .where(eq(sets.id, id))
+    .limit(1);
+
+  if (!existing) {
+    throw new JournalError("not_found");
+  }
+
+  await db.update(sets).set(values).where(eq(sets.id, id));
+
+  return { set: toSetView({ id, ...values }, handle), previousVideoUrl: existing.videoUrl };
+}
+
+export async function deleteSet(
+  db: JournalDb,
+  id: string,
+): Promise<{ videoUrl: string | null }> {
+  const [existing] = await db
+    .select({ videoUrl: sets.videoUrl })
+    .from(sets)
+    .where(eq(sets.id, id))
+    .limit(1);
+
+  if (!existing) {
+    throw new JournalError("not_found");
+  }
+
+  await db.delete(sets).where(eq(sets.id, id));
+  return { videoUrl: existing.videoUrl };
 }
 
 export async function attachVideo(

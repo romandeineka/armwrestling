@@ -49,6 +49,7 @@ export function JournalBoard() {
   const [blockHeight, setBlockHeight] = useState<BlockHeight | "">("");
   const [band, setBand] = useState<BandId | "">("");
   const [trainedOn, setTrainedOn] = useState("");
+  const [editing, setEditing] = useState<SetView | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoInputKey, setVideoInputKey] = useState(0);
   const [progress, setProgress] = useState<number | null>(null);
@@ -98,6 +99,51 @@ export function JournalBoard() {
     await load();
   }
 
+  function resetForm() {
+    setEditing(null);
+    setWeightKg("");
+    setReps("");
+    setSetCount("");
+    setHoldSeconds("");
+    setVideoFile(null);
+    setVideoInputKey((key) => key + 1);
+    setError("");
+  }
+
+  function startEdit(set: SetView) {
+    resetForm();
+    setEditing(set);
+    setTrainedOn(set.trainedOn);
+    setExercise(set.exercise as ExerciseId);
+    setHandleId(set.handleId);
+    setArm(set.arm);
+    setBlockHeight(set.blockHeight as BlockHeight);
+    setBand((set.band ?? "") as BandId | "");
+    setWeightKg(String(set.weightKg));
+    setSetCount(String(set.setCount));
+    setReps(set.holdSeconds != null ? "" : String(set.reps));
+    setHoldSeconds(set.holdSeconds != null ? String(set.holdSeconds) : "");
+    setTab("new");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    resetForm();
+    setTab("records");
+  }
+
+  async function deleteEntry(set: SetView) {
+    if (!window.confirm(t.confirmDelete)) return;
+    setError("");
+    const response = await fetch(`/api/sets/${set.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      setError(errorText(t, data.error));
+      return;
+    }
+    await load();
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -107,7 +153,8 @@ export function JournalBoard() {
     }
     setPending(true);
     try {
-      let videoUrl: string | null = null;
+      // При редагуванні без нового файлу лишаємо старе відео.
+      let videoUrl: string | null = editing?.videoUrl ?? null;
       if (videoFile) {
         try {
           videoUrl = await uploadVideo(videoFile, setProgress);
@@ -119,8 +166,8 @@ export function JournalBoard() {
         }
       }
 
-      const response = await fetch("/api/sets", {
-        method: "POST",
+      const response = await fetch(editing ? `/api/sets/${editing.id}` : "/api/sets", {
+        method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           handleId,
@@ -141,12 +188,7 @@ export function JournalBoard() {
         setError(errorText(t, data.error));
         return;
       }
-      setWeightKg("");
-      setReps("");
-      setSetCount("");
-      setHoldSeconds("");
-      setVideoFile(null);
-      setVideoInputKey((key) => key + 1);
+      resetForm();
       await load();
       setTab("records");
     } finally {
@@ -253,6 +295,18 @@ export function JournalBoard() {
           onSubmit={onSubmit}
           className="flex flex-col gap-5 rounded-2xl border border-line bg-card/95 p-5"
         >
+          {editing ? (
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-display text-2xl uppercase">{t.editTitle}</h2>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="rounded-lg border border-line px-3 py-1 text-sm text-foreground"
+              >
+                {t.cancel}
+              </button>
+            </div>
+          ) : null}
           <div className="grid gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm text-muted">
               {t.date}
@@ -423,7 +477,9 @@ export function JournalBoard() {
 
           <label className="flex flex-col gap-1 text-sm text-muted">
             {t.video}
-            <span className="text-xs">{t.videoHint}</span>
+            <span className="text-xs">
+              {editing?.videoUrl ? t.keepVideo : t.videoHint}
+            </span>
             <input
               key={videoInputKey}
               type="file"
@@ -443,7 +499,9 @@ export function JournalBoard() {
               ? `${t.uploading} ${progress}%`
               : pending
                 ? t.saving
-                : t.save}
+                : editing
+                  ? t.saveChanges
+                  : t.save}
           </button>
         </form>
       ) : (
@@ -466,6 +524,8 @@ export function JournalBoard() {
                   locale={locale}
                   canEdit={journal.isOwner}
                   onChanged={load}
+                  onEdit={startEdit}
+                  onDelete={deleteEntry}
                 />
               ))}
             </ul>
@@ -482,14 +542,26 @@ function RecordCard({
   locale,
   canEdit,
   onChanged,
+  onEdit,
+  onDelete,
 }: {
   record: RecordView;
   t: Messages;
   locale: Locale;
   canEdit: boolean;
   onChanged: () => Promise<void>;
+  onEdit: (set: SetView) => void;
+  onDelete: (set: SetView) => Promise<void>;
 }) {
   const { best } = record;
+  const actions = (set: SetView) =>
+    canEdit ? (
+      <EntryActions
+        t={t}
+        onEdit={() => onEdit(set)}
+        onDelete={() => void onDelete(set)}
+      />
+    ) : null;
   return (
     <li className="flex flex-col gap-3 rounded-2xl border border-line bg-card/95 p-4">
       <div className="flex items-center gap-3">
@@ -511,11 +583,14 @@ function RecordCard({
         </div>
       </div>
 
-      <div>
-        <p className="font-mono text-2xl text-good">
-          {formatResult(best, t, locale)}
-        </p>
-        <p className="text-sm text-muted">{setDetails(best, t)}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-2xl text-good">
+            {formatResult(best, t, locale)}
+          </p>
+          <p className="text-sm text-muted">{setDetails(best, t)}</p>
+        </div>
+        {actions(best)}
       </div>
 
       {best.videoUrl ? (
@@ -562,12 +637,42 @@ function RecordCard({
                     compact
                   />
                 ) : null}
+                {actions(set)}
               </li>
             ))}
           </ul>
         </details>
       ) : null}
     </li>
+  );
+}
+
+function EntryActions({
+  t,
+  onEdit,
+  onDelete,
+}: {
+  t: Messages;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 gap-1 text-xs">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="rounded-md border border-line px-2 py-1 text-muted hover:text-foreground"
+      >
+        {t.edit}
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="rounded-md border border-line px-2 py-1 text-muted hover:border-accent hover:text-accent"
+      >
+        {t.remove}
+      </button>
+    </div>
   );
 }
 

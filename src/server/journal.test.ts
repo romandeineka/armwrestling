@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { EQUIPMENT } from "./catalog";
-import { addSet, attachVideo, getJournal, seedHandles } from "./journal";
+import { addSet, attachVideo, deleteSet, getJournal, seedHandles, updateSet } from "./journal";
 import { createTestDb } from "./test-db";
 
 const BLOB_VIDEO = "https://abc123.public.blob.vercel-storage.com/records/video-x1y2.mp4";
@@ -182,6 +182,59 @@ describe("журнал рекордів", () => {
       attachVideo(db, created.id, { videoUrl: "https://evil.example.com/v.mp4" }),
       /bad_video/,
     );
+  });
+
+  it("редагує запис, перераховує рекорд і повертає старе відео", async () => {
+    const db = await createTestDb();
+    const handleId = await seedOne(db, "edit");
+    const base = {
+      handleId,
+      exercise: "cupping",
+      arm: "right" as const,
+      reps: 5,
+      blockHeight: "highest" as const,
+      trainedOn: "2026-10-16",
+    };
+
+    const typo = await addSet(db, { ...base, weightKg: 500, videoUrl: BLOB_VIDEO });
+    await addSet(db, { ...base, weightKg: 57.5 });
+
+    const newVideo = BLOB_VIDEO.replace("x1y2", "z9");
+    const { set, previousVideoUrl } = await updateSet(db, typo.id, {
+      ...base,
+      weightKg: 50,
+      videoUrl: newVideo,
+    });
+
+    assert.equal(set.weightKg, 50);
+    assert.equal(previousVideoUrl, BLOB_VIDEO);
+    const journal = await getJournal(db);
+    assert.equal(journal.records[0]?.best.weightKg, 57.5);
+    assert.equal(journal.records[0]?.history[0]?.videoUrl, newVideo);
+
+    await assert.rejects(updateSet(db, typo.id, { ...base, weightKg: 0 }), /bad_weight/);
+    await assert.rejects(updateSet(db, "немає-такого", { ...base, weightKg: 10 }), /not_found/);
+  });
+
+  it("видаляє запис і повертає його відео, щоб прибрати файл зі сховища", async () => {
+    const db = await createTestDb();
+    const handleId = await seedOne(db, "delete");
+    const created = await addSet(db, {
+      handleId,
+      exercise: "cupping",
+      arm: "right",
+      weightKg: 500,
+      reps: 80,
+      blockHeight: "highest",
+      trainedOn: "2026-10-16",
+      videoUrl: BLOB_VIDEO,
+    });
+
+    const { videoUrl } = await deleteSet(db, created.id);
+    assert.equal(videoUrl, BLOB_VIDEO);
+    assert.equal((await getJournal(db)).records.length, 0);
+
+    await assert.rejects(deleteSet(db, created.id), /not_found/);
   });
 
   it("не дублює стартові ручки, якщо вони вже є", async () => {

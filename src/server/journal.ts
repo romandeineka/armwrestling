@@ -113,17 +113,22 @@ export type SetView = {
   videoUrl: string | null;
 };
 
-// Одна картка у вкладці «Мої рекорди»: найкраща спроба і всі інші для тієї ж
-// вправи, ручки і руки.
+// Найкраща спроба однієї руки і всі інші її спроби.
+export type ArmRecord = {
+  best: SetView;
+  history: SetView[];
+};
+
+// Одна картка у вкладці «Мої рекорди»: вправа + ручка, обидві руки поруч.
+// null означає, що цією рукою ще нічого не записано.
 export type RecordView = {
   key: string;
   handleId: string;
   handleName: string;
   image: string | null;
   exercise: string;
-  arm: Arm;
-  best: SetView;
-  history: SetView[];
+  right: ArmRecord | null;
+  left: ArmRecord | null;
 };
 
 export type JournalView = {
@@ -299,33 +304,39 @@ export async function getJournal(db: JournalDb): Promise<JournalView> {
       continue;
     }
     const view = toSetView(row, handle);
-    const key = `${row.exercise}:${row.handleId}:${row.arm}`;
-    const group = groups.get(key);
-    if (group) {
-      group.history.push(view);
-    } else {
-      groups.set(key, {
+    const key = `${row.exercise}:${row.handleId}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
         key,
         handleId: row.handleId,
         handleName: handle.name,
         image: handle.image,
         exercise: row.exercise,
-        arm: row.arm,
-        best: view,
-        history: [],
-      });
+        right: null,
+        left: null,
+      };
+      groups.set(key, group);
+    }
+    // Рядки вже відсортовані від найкращого, тож перший для руки і є рекордом.
+    const side = group[row.arm];
+    if (side) {
+      side.history.push(view);
+    } else {
+      group[row.arm] = { best: view, history: [] };
     }
   }
 
   const records = [...groups.values()];
   for (const record of records) {
-    record.history.sort((a, b) => b.trainedOn.localeCompare(a.trainedOn));
+    for (const side of [record.right, record.left]) {
+      side?.history.sort((a, b) => b.trainedOn.localeCompare(a.trainedOn));
+    }
   }
   records.sort(
     (a, b) =>
       (exerciseOrder.get(a.exercise) ?? 99) - (exerciseOrder.get(b.exercise) ?? 99) ||
-      (equipmentOrder.get(a.handleId) ?? 99) - (equipmentOrder.get(b.handleId) ?? 99) ||
-      (a.arm === b.arm ? 0 : a.arm === "right" ? -1 : 1),
+      (equipmentOrder.get(a.handleId) ?? 99) - (equipmentOrder.get(b.handleId) ?? 99),
   );
 
   return {

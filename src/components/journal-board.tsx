@@ -587,7 +587,6 @@ function RecordCard({
   onDelete: (set: SetView) => Promise<void>;
   onPlay: (url: string) => void;
 }) {
-  const { best } = record;
   const actions = (set: SetView) =>
     canEdit ? (
       <EntryActions
@@ -596,6 +595,20 @@ function RecordCard({
         onDelete={() => void onDelete(set)}
       />
     ) : null;
+  const sides = [
+    ["right", record.right],
+    ["left", record.left],
+  ] as const;
+  const armLabel = (arm: Arm) => (arm === "left" ? t.left : t.right);
+  // Попередні спроби обох рук одним списком, найновіші зверху.
+  const history = sides
+    .flatMap(([arm, side]) => (side?.history ?? []).map((set) => ({ arm, set })))
+    .sort((a, b) => b.set.trainedOn.localeCompare(a.set.trainedOn));
+  const diff =
+    record.right && record.left
+      ? record.right.best.weightKg - record.left.best.weightKg
+      : null;
+
   return (
     <li className="flex flex-col gap-3 rounded-2xl border border-line bg-card/95 p-4">
       <div className="flex items-center gap-3">
@@ -611,46 +624,74 @@ function RecordCard({
             {named(t.exercises, record.exercise)}
           </p>
           <p className="text-sm text-muted">
-            {equipmentLabel(t, record.handleId, record.handleName)} ·{" "}
-            {record.arm === "left" ? t.left : t.right}
+            {equipmentLabel(t, record.handleId, record.handleName)}
           </p>
         </div>
       </div>
 
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-2xl text-good">
-            {formatResult(best, t, locale)}
-          </p>
-          <p className="text-sm text-muted">{setDetails(best, t)}</p>
-        </div>
-        {actions(best)}
-      </div>
+      <ul className="flex flex-col divide-y divide-line">
+        {sides.map(([arm, side]) => (
+          <li key={arm} className="flex flex-col gap-2 py-2 first:pt-0 last:pb-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs tracking-wide text-muted uppercase">
+                  {armLabel(arm)}
+                </p>
+                {side ? (
+                  <>
+                    <p className="font-mono text-xl text-good">
+                      {formatResult(side.best, t, locale)}
+                    </p>
+                    <p className="text-sm text-muted">{setDetails(side.best, t)}</p>
+                  </>
+                ) : (
+                  <p className="font-mono text-xl text-muted">—</p>
+                )}
+              </div>
+              {side ? actions(side.best) : null}
+            </div>
+            {side?.best.videoUrl ? (
+              <button
+                type="button"
+                onClick={() => onPlay(side.best.videoUrl!)}
+                className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-background"
+              >
+                ▶ {t.video}
+              </button>
+            ) : side && canEdit ? (
+              <AttachVideoButton
+                setId={side.best.id}
+                t={t}
+                onDone={onChanged}
+                compact
+              />
+            ) : null}
+          </li>
+        ))}
+      </ul>
 
-      {best.videoUrl ? (
-        <button
-          type="button"
-          onClick={() => onPlay(best.videoUrl!)}
-          className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-background"
-        >
-          ▶ {t.video}
-        </button>
-      ) : canEdit ? (
-        <AttachVideoButton setId={best.id} t={t} onDone={onChanged} compact />
+      {diff != null ? (
+        <p className="text-sm text-muted">
+          {diff === 0
+            ? t.armsEqual
+            : `${diff > 0 ? t.rightStronger : t.leftStronger} ${formatKg(Math.abs(diff), locale)} ${t.kg.toLowerCase()}`}
+        </p>
       ) : null}
 
-      {record.history.length > 0 ? (
+      {history.length > 0 ? (
         <details className="text-sm">
           <summary className="cursor-pointer text-muted">
-            {t.history} · {record.history.length}
+            {t.history} · {history.length}
           </summary>
           <ul className="mt-2 divide-y divide-line">
-            {record.history.map((set) => (
+            {history.map(({ arm, set }) => (
               <li
                 key={set.id}
                 className="flex flex-wrap items-center justify-between gap-2 py-2"
               >
-                <span className="text-muted">{formatDate(set.trainedOn)}</span>
+                <span className="text-muted">
+                  {formatDate(set.trainedOn)} · {armLabel(arm)}
+                </span>
                 <span className="font-mono text-foreground">
                   {formatResult(set, t, locale)}
                 </span>

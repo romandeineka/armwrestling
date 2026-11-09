@@ -42,14 +42,11 @@ describe("журнал рекордів", () => {
     });
 
     const journal = await getJournal(db);
-    const right = journal.records.find(
-      (record) => record.handleId === handleId && record.arm === "right",
-    );
-    const left = journal.records.find(
-      (record) => record.handleId === handleId && record.arm === "left",
-    );
+    const right = journal.records[0]?.right;
+    const left = journal.records[0]?.left;
 
-    assert.equal(journal.records.length, 2);
+    // Обидві руки в одній картці вправа + ручка.
+    assert.equal(journal.records.length, 1);
     assert.equal(right?.best.weightKg, 20);
     assert.equal(right?.best.setCount, 3);
     assert.equal(right?.best.band, "red");
@@ -75,10 +72,10 @@ describe("журнал рекордів", () => {
     await addSet(db, { ...base, reps: 6 });
 
     const journal = await getJournal(db);
-    assert.equal(journal.records[0]?.best.weightKg, 22.5);
-    assert.equal(journal.records[0]?.best.reps, 6);
-    assert.equal(journal.records[0]?.best.setCount, 1);
-    assert.equal(journal.records[0]?.best.videoUrl, null);
+    assert.equal(journal.records[0]?.right?.best.weightKg, 22.5);
+    assert.equal(journal.records[0]?.right?.best.reps, 6);
+    assert.equal(journal.records[0]?.right?.best.setCount, 1);
+    assert.equal(journal.records[0]?.right?.best.videoUrl, null);
   });
 
   it("відхиляє нульову вагу, нульові повтори, чужу ручку і неіснуючу дату", async () => {
@@ -127,8 +124,8 @@ describe("журнал рекордів", () => {
 
     assert.equal(created.blockHeight, "");
     const journal = await getJournal(db);
-    assert.equal(journal.records[0]?.best.weightKg, 40);
-    assert.equal(journal.records[0]?.history.length, 1);
+    assert.equal(journal.records[0]?.right?.best.weightKg, 40);
+    assert.equal(journal.records[0]?.right?.history.length, 1);
   });
 
   it("для ізометрії зберігає секунди і не просить повтори", async () => {
@@ -200,7 +197,7 @@ describe("журнал рекордів", () => {
 
     await attachVideo(db, created.id, { videoUrl: BLOB_VIDEO });
     const journal = await getJournal(db);
-    assert.equal(journal.records[0]?.best.videoUrl, BLOB_VIDEO);
+    assert.equal(journal.records[0]?.left?.best.videoUrl, BLOB_VIDEO);
 
     await assert.rejects(
       attachVideo(db, "немає-такого", { videoUrl: BLOB_VIDEO }),
@@ -237,8 +234,8 @@ describe("журнал рекордів", () => {
     assert.equal(set.weightKg, 50);
     assert.equal(previousVideoUrl, BLOB_VIDEO);
     const journal = await getJournal(db);
-    assert.equal(journal.records[0]?.best.weightKg, 57.5);
-    assert.equal(journal.records[0]?.history[0]?.videoUrl, newVideo);
+    assert.equal(journal.records[0]?.right?.best.weightKg, 57.5);
+    assert.equal(journal.records[0]?.right?.history[0]?.videoUrl, newVideo);
 
     await assert.rejects(updateSet(db, typo.id, { ...base, weightKg: 0 }), /bad_weight/);
     await assert.rejects(updateSet(db, "немає-такого", { ...base, weightKg: 10 }), /not_found/);

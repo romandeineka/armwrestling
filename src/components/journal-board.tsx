@@ -1,6 +1,7 @@
 "use client";
 
 import { upload } from "@vercel/blob/client";
+import { compressVideo } from "@/components/compress-video";
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocale } from "@/components/use-locale";
 import type { Locale, Messages } from "@/i18n/messages";
@@ -62,7 +63,7 @@ export function JournalBoard() {
   const [editing, setEditing] = useState<SetView | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoInputKey, setVideoInputKey] = useState(0);
-  const [progress, setProgress] = useState<number | null>(null);
+  const [progress, setProgress] = useState<VideoProgress>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [ready, setReady] = useState(false);
@@ -533,7 +534,7 @@ export function JournalBoard() {
             className="rounded-lg bg-accent px-4 py-3 font-medium text-background disabled:opacity-60"
           >
             {progress != null
-              ? `${t.uploading} ${progress}%`
+              ? progressText(t, progress)
               : pending
                 ? t.saving
                 : editing
@@ -889,13 +890,13 @@ function AttachVideoButton({
   onDone: () => Promise<void>;
   compact?: boolean;
 }) {
-  const [progress, setProgress] = useState<number | null>(null);
+  const [progress, setProgress] = useState<VideoProgress>(null);
   const [error, setError] = useState("");
 
   async function onPick(file: File | undefined) {
     if (!file) return;
     setError("");
-    setProgress(0);
+    setProgress({ stage: "compress", percent: 0 });
     try {
       const videoUrl = await uploadVideo(file, setProgress);
       const response = await fetch(`/api/sets/${setId}`, {
@@ -923,7 +924,7 @@ function AttachVideoButton({
           compact ? "px-2 py-1 text-xs" : "px-3 py-6 text-sm"
         }`}
       >
-        {progress != null ? `${t.uploading} ${progress}%` : `+ ${t.attachVideo}`}
+        {progress != null ? progressText(t, progress) : `+ ${t.attachVideo}`}
         <input
           type="file"
           accept="video/*"
@@ -1066,14 +1067,29 @@ function NumberField({
   );
 }
 
-// Файл іде з браузера прямо у Vercel Blob; наш сервер лише видає дозвіл.
-async function uploadVideo(file: File, onProgress: (percent: number) => void) {
+type VideoProgress = { stage: "compress" | "upload"; percent: number } | null;
+
+function progressText(t: Messages, progress: NonNullable<VideoProgress>) {
+  const label = progress.stage === "compress" ? t.compressing : t.uploading;
+  return `${label} ${progress.percent}%`;
+}
+
+// Спершу стискаємо в браузері, потім файл іде прямо у Vercel Blob;
+// наш сервер лише видає дозвіл на завантаження.
+async function uploadVideo(original: File, onProgress: (progress: VideoProgress) => void) {
+  onProgress({ stage: "compress", percent: 0 });
+  const file = await compressVideo(original, (percent) =>
+    onProgress({ stage: "compress", percent }),
+  );
+
+  onProgress({ stage: "upload", percent: 0 });
   const extension = file.name.split(".").pop()?.toLowerCase() || "mp4";
   const blob = await upload(`records/video.${extension}`, file, {
     access: "public",
     handleUploadUrl: "/api/upload",
     multipart: file.size > 20 * 1024 * 1024,
-    onUploadProgress: ({ percentage }) => onProgress(Math.round(percentage)),
+    onUploadProgress: ({ percentage }) =>
+      onProgress({ stage: "upload", percent: Math.round(percentage) }),
   });
   return blob.url;
 }

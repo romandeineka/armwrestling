@@ -58,7 +58,10 @@ const setInput = z
       .max(20, "bad_sets")
       .optional()
       .default(1),
-    blockHeight: z.enum(asEnum(BLOCK_HEIGHTS), { message: "bad_block" }),
+    blockHeight: z
+      .enum(asEnum(BLOCK_HEIGHTS), { message: "bad_block" })
+      .nullable()
+      .optional(),
     band: z.enum(asEnum(BANDS), { message: "bad_band" }).nullable().optional(),
     trainedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "bad_date"),
     videoUrl: videoUrl.nullable().optional(),
@@ -183,7 +186,7 @@ async function parseSet(db: JournalDb, input: unknown) {
     setCount: parsed.data.setCount,
     trainedOn: parsed.data.trainedOn,
     exercise: parsed.data.exercise,
-    blockHeight: parsed.data.blockHeight,
+    blockHeight: parsed.data.blockHeight ?? null,
     band: (parsed.data.band ?? null) as BandId | null,
     holdSeconds: isometric ? (parsed.data.holdSeconds ?? null) : null,
     videoUrl: parsed.data.videoUrl ?? null,

@@ -103,6 +103,34 @@ describe("журнал рекордів", () => {
     await assert.rejects(addSet(db, { ...valid, blockHeight: "middle" }), /bad_block/);
   });
 
+  it("записує рекорд без блока, наприклад з поясом без стола", async () => {
+    const db = await createTestDb();
+    const handleId = await seedOne(db, "belt-only");
+
+    const created = await addSet(db, {
+      handleId,
+      exercise: "rising",
+      arm: "right",
+      weightKg: 40,
+      reps: 1,
+      trainedOn: "2026-11-09",
+    });
+    await addSet(db, {
+      handleId,
+      exercise: "rising",
+      arm: "right",
+      weightKg: 35,
+      reps: 1,
+      blockHeight: null,
+      trainedOn: "2026-11-09",
+    });
+
+    assert.equal(created.blockHeight, "");
+    const journal = await getJournal(db);
+    assert.equal(journal.records[0]?.best.weightKg, 40);
+    assert.equal(journal.records[0]?.history.length, 1);
+  });
+
   it("для ізометрії зберігає секунди і не просить повтори", async () => {
     const db = await createTestDb();
     const handleId = await seedOne(db, "belt");

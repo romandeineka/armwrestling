@@ -147,10 +147,6 @@ export function JournalBoard() {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!blockHeight) {
-      setError(t.errors.bad_block);
-      return;
-    }
     setPending(true);
     try {
       // При редагуванні без нового файлу лишаємо старе відео.
@@ -177,7 +173,7 @@ export function JournalBoard() {
           reps: isometric ? undefined : Number(reps),
           holdSeconds: isometric ? Number(holdSeconds) : null,
           setCount: Number(setCount),
-          blockHeight,
+          blockHeight: blockHeight || null,
           band: band || null,
           trainedOn,
           videoUrl,
@@ -393,6 +389,11 @@ export function JournalBoard() {
                   className="h-36 w-20 rounded-lg object-cover object-top"
                 />
                 <div className="flex flex-1 flex-col gap-1">
+                  <ChoiceButton
+                    active={blockHeight === ""}
+                    label={t.blockNone}
+                    onPick={() => setBlockHeight("")}
+                  />
                   {BLOCK_HEIGHTS.map((height) => (
                     <ChoiceButton
                       key={height}

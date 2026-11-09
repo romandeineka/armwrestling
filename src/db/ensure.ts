@@ -32,6 +32,12 @@ export async function ensureSchema(exec: (statement: string) => Promise<unknown>
     `UPDATE sets SET exercise = 'imitation_wrestling' WHERE exercise = 'imitation'`,
     `ALTER TABLE sets ADD COLUMN IF NOT EXISTS video_url text`,
     `ALTER TABLE sets ADD COLUMN IF NOT EXISTS body_weight_grams integer`,
+    `CREATE TABLE IF NOT EXISTS login_attempts (
+      id text PRIMARY KEY,
+      ip text NOT NULL,
+      attempted_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS login_attempts_ip_time ON login_attempts (ip, attempted_at)`,
     `CREATE TABLE IF NOT EXISTS sessions (
       id text PRIMARY KEY,
       expires_at timestamptz NOT NULL,

@@ -1,9 +1,39 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, lte } from "drizzle-orm";
-import { sessions } from "@/db/schema";
+import { and, asc, eq, gt, lte } from "drizzle-orm";
+import { loginAttempts, sessions } from "@/db/schema";
 import type { JournalDb } from "@/db/types";
 
 export const SESSION_DAYS = 30;
+export const MAX_FAILED_LOGINS = 5;
+export const LOGIN_WINDOW_MINUTES = 15;
+
+const LOGIN_WINDOW_MS = LOGIN_WINDOW_MINUTES * 60 * 1000;
+
+// Скільки секунд чекати до наступної спроби, або null, якщо входити можна.
+// Блок знімається, коли найстаріша з останніх невдалих спроб виходить за вікно 15 хвилин.
+export async function loginRetryAfter(db: JournalDb, ip: string, now = new Date()) {
+  const windowStart = new Date(now.getTime() - LOGIN_WINDOW_MS);
+  await db.delete(loginAttempts).where(lte(loginAttempts.attemptedAt, windowStart));
+
+  const recent = await db
+    .select({ attemptedAt: loginAttempts.attemptedAt })
+    .from(loginAttempts)
+    .where(eq(loginAttempts.ip, ip))
+    .orderBy(asc(loginAttempts.attemptedAt));
+
+  if (recent.length < MAX_FAILED_LOGINS) return null;
+
+  const oldest = new Date(recent[recent.length - MAX_FAILED_LOGINS]!.attemptedAt);
+  return Math.max(1, Math.ceil((oldest.getTime() + LOGIN_WINDOW_MS - now.getTime()) / 1000));
+}
+
+export async function recordFailedLogin(db: JournalDb, ip: string, now = new Date()) {
+  await db.insert(loginAttempts).values({ id: randomBytes(16).toString("hex"), ip, attemptedAt: now });
+}
+
+export async function clearFailedLogins(db: JournalDb, ip: string) {
+  await db.delete(loginAttempts).where(eq(loginAttempts.ip, ip));
+}
 
 // Формат хешу: scrypt:<сіль hex>:<хеш hex>. Його друкує scripts/hash-password.mjs.
 export async function verifyPassword(password: string, stored: string) {

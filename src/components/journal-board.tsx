@@ -108,8 +108,9 @@ export function JournalBoard() {
       body: JSON.stringify({ password }),
     });
     if (!response.ok) {
-      const data = (await response.json()) as { error?: string };
-      setLoginError(errorText(t, data.error));
+      const data = (await response.json()) as { error?: string; retryAfter?: number };
+      const minutes = String(Math.ceil((data.retryAfter ?? 60) / 60));
+      setLoginError(errorText(t, data.error).replace("{minutes}", minutes));
       return;
     }
     setPassword("");

@@ -27,6 +27,13 @@ export const sets = pgTable("sets", {
   bodyWeightGrams: integer("body_weight_grams"),
 });
 
+// Невдалі спроби входу: по них рахуємо, чи не перебирає хтось пароль.
+export const loginAttempts = pgTable("login_attempts", {
+  id: text("id").primaryKey(),
+  ip: text("ip").notNull(),
+  attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // id тут не сам токен з cookie, а його SHA-256. Якщо таблицю хтось прочитає,
 // увійти з цими значеннями він не зможе.
 export const sessions = pgTable("sessions", {

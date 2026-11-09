@@ -2,7 +2,8 @@
 
 import { upload } from "@vercel/blob/client";
 import { compressVideo } from "@/components/compress-video";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { ProgressChart, progressSeries } from "@/components/progress-chart";
 import { useLocale } from "@/components/use-locale";
 import type { Locale, Messages } from "@/i18n/messages";
 import {
@@ -69,6 +70,7 @@ export function JournalBoard() {
   const [ready, setReady] = useState(false);
   const [filter, setFilter] = useState("");
   const [playing, setPlaying] = useState<string | null>(null);
+  const [charting, setCharting] = useState<RecordView | null>(null);
   const [celebration, setCelebration] = useState<SavedSet | null>(null);
   const isometric = exercise === ISOMETRIC_EXERCISE;
   // Кнопки фільтра лише для вправ, у яких уже є рекорди, у порядку каталогу.
@@ -611,6 +613,7 @@ export function JournalBoard() {
                     onEdit={startEdit}
                     onDelete={deleteEntry}
                     onPlay={setPlaying}
+                    onChart={setCharting}
                   />
                 ))}
               </ul>
@@ -620,6 +623,14 @@ export function JournalBoard() {
       )}
       {playing ? (
         <VideoModal url={playing} t={t} onClose={() => setPlaying(null)} />
+      ) : null}
+      {charting ? (
+        <ChartModal
+          record={charting}
+          t={t}
+          locale={locale}
+          onClose={() => setCharting(null)}
+        />
       ) : null}
     </main>
   );
@@ -634,6 +645,7 @@ function RecordCard({
   onEdit,
   onDelete,
   onPlay,
+  onChart,
 }: {
   record: RecordView;
   t: Messages;
@@ -643,6 +655,7 @@ function RecordCard({
   onEdit: (set: SetView) => void;
   onDelete: (set: SetView) => Promise<void>;
   onPlay: (url: string) => void;
+  onChart: (record: RecordView) => void;
 }) {
   const actions = (set: SetView) =>
     canEdit ? (
@@ -665,6 +678,10 @@ function RecordCard({
     record.right && record.left
       ? record.right.best.weightKg - record.left.best.weightKg
       : null;
+  // Графік має сенс, коли є спроби хоча б за два різні дні.
+  const chartDays = new Set(
+    progressSeries(record).flatMap((series) => series.points.map((p) => p.date)),
+  ).size;
 
   return (
     <li className="flex flex-col gap-3 rounded-2xl border border-line bg-card/95 p-4">
@@ -735,6 +752,16 @@ function RecordCard({
         </p>
       ) : null}
 
+      {chartDays >= 2 ? (
+        <button
+          type="button"
+          onClick={() => onChart(record)}
+          className="self-start rounded-lg border border-line px-3 py-1 text-sm text-foreground hover:border-accent"
+        >
+          📈 {t.progress}
+        </button>
+      ) : null}
+
       {history.length > 0 ? (
         <details className="text-sm">
           <summary className="cursor-pointer text-muted">
@@ -803,15 +830,15 @@ function FilterChip({
   );
 }
 
-// Відео вантажиться лише тоді, коли його відкрили, а не разом зі сторінкою.
-function VideoModal({
-  url,
+// Вікно поверх сторінки: закривається кнопкою, кліком по фону або клавішею Esc.
+function Overlay({
   t,
   onClose,
+  children,
 }: {
-  url: string;
   t: Messages;
   onClose: () => void;
+  children: ReactNode;
 }) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -830,7 +857,7 @@ function VideoModal({
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="flex max-h-full flex-col items-end gap-2"
+        className="flex max-h-full w-full max-w-2xl flex-col items-end gap-2"
       >
         <button
           type="button"
@@ -839,15 +866,50 @@ function VideoModal({
         >
           ✕ {t.close}
         </button>
-        <video
-          src={url}
-          controls
-          autoPlay
-          playsInline
-          className="max-h-[85vh] max-w-full rounded-lg bg-black"
-        />
+        {children}
       </div>
     </div>
+  );
+}
+
+// Відео вантажиться лише тоді, коли його відкрили, а не разом зі сторінкою.
+function VideoModal({ url, t, onClose }: { url: string; t: Messages; onClose: () => void }) {
+  return (
+    <Overlay t={t} onClose={onClose}>
+      <video
+        src={url}
+        controls
+        autoPlay
+        playsInline
+        className="mx-auto max-h-[85vh] max-w-full rounded-lg bg-black"
+      />
+    </Overlay>
+  );
+}
+
+function ChartModal({
+  record,
+  t,
+  locale,
+  onClose,
+}: {
+  record: RecordView;
+  t: Messages;
+  locale: Locale;
+  onClose: () => void;
+}) {
+  return (
+    <Overlay t={t} onClose={onClose}>
+      <div className="max-h-[85vh] w-full overflow-y-auto rounded-2xl border border-line bg-card p-4">
+        <p className="font-display text-xl text-foreground uppercase">
+          {t.progress} · {named(t.exercises, record.exercise)}
+        </p>
+        <p className="mb-3 text-sm text-muted">
+          {equipmentLabel(t, record.handleId, record.handleName)} · {t.progressHint}
+        </p>
+        <ProgressChart record={record} t={t} locale={locale} />
+      </div>
+    </Overlay>
   );
 }
 

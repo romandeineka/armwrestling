@@ -56,7 +56,15 @@ export function JournalBoard() {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [ready, setReady] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [playing, setPlaying] = useState<string | null>(null);
   const isometric = exercise === ISOMETRIC_EXERCISE;
+  // Кнопки фільтра лише для вправ, у яких уже є рекорди, у порядку каталогу.
+  const recordExercises = [...new Set(journal.records.map((record) => record.exercise))];
+  const activeFilter = recordExercises.includes(filter) ? filter : "";
+  const shownRecords = activeFilter
+    ? journal.records.filter((record) => record.exercise === activeFilter)
+    : journal.records;
 
   async function load() {
     const response = await fetch("/api/journal");
@@ -516,23 +524,46 @@ export function JournalBoard() {
               {t.emptyRecords}
             </p>
           ) : (
-            <ul className="grid gap-4 md:grid-cols-2">
-              {journal.records.map((record) => (
-                <RecordCard
-                  key={record.key}
-                  record={record}
-                  t={t}
-                  locale={locale}
-                  canEdit={journal.isOwner}
-                  onChanged={load}
-                  onEdit={startEdit}
-                  onDelete={deleteEntry}
-                />
-              ))}
-            </ul>
+            <>
+              {recordExercises.length > 1 ? (
+                <div className="flex flex-wrap gap-2">
+                  <FilterChip
+                    active={activeFilter === ""}
+                    label={t.allExercises}
+                    onPick={() => setFilter("")}
+                  />
+                  {recordExercises.map((id) => (
+                    <FilterChip
+                      key={id}
+                      active={activeFilter === id}
+                      label={named(t.exercises, id)}
+                      onPick={() => setFilter(id)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {shownRecords.map((record) => (
+                  <RecordCard
+                    key={record.key}
+                    record={record}
+                    t={t}
+                    locale={locale}
+                    canEdit={journal.isOwner}
+                    onChanged={load}
+                    onEdit={startEdit}
+                    onDelete={deleteEntry}
+                    onPlay={setPlaying}
+                  />
+                ))}
+              </ul>
+            </>
           )}
         </section>
       )}
+      {playing ? (
+        <VideoModal url={playing} t={t} onClose={() => setPlaying(null)} />
+      ) : null}
     </main>
   );
 }
@@ -545,6 +576,7 @@ function RecordCard({
   onChanged,
   onEdit,
   onDelete,
+  onPlay,
 }: {
   record: RecordView;
   t: Messages;
@@ -553,6 +585,7 @@ function RecordCard({
   onChanged: () => Promise<void>;
   onEdit: (set: SetView) => void;
   onDelete: (set: SetView) => Promise<void>;
+  onPlay: (url: string) => void;
 }) {
   const { best } = record;
   const actions = (set: SetView) =>
@@ -595,15 +628,15 @@ function RecordCard({
       </div>
 
       {best.videoUrl ? (
-        <video
-          src={best.videoUrl}
-          controls
-          playsInline
-          preload="metadata"
-          className="w-full rounded-lg bg-black"
-        />
+        <button
+          type="button"
+          onClick={() => onPlay(best.videoUrl!)}
+          className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-background"
+        >
+          ▶ {t.video}
+        </button>
       ) : canEdit ? (
-        <AttachVideoButton setId={best.id} t={t} onDone={onChanged} />
+        <AttachVideoButton setId={best.id} t={t} onDone={onChanged} compact />
       ) : null}
 
       {record.history.length > 0 ? (
@@ -622,14 +655,13 @@ function RecordCard({
                   {formatResult(set, t, locale)}
                 </span>
                 {set.videoUrl ? (
-                  <a
-                    href={set.videoUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => onPlay(set.videoUrl!)}
                     className="text-accent underline"
                   >
                     ▶ {t.video}
-                  </a>
+                  </button>
                 ) : canEdit ? (
                   <AttachVideoButton
                     setId={set.id}
@@ -645,6 +677,79 @@ function RecordCard({
         </details>
       ) : null}
     </li>
+  );
+}
+
+function FilterChip({
+  active,
+  label,
+  onPick,
+}: {
+  active: boolean;
+  label: string;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onPick}
+      className={`rounded-full border px-3 py-1 text-sm ${
+        active
+          ? "border-accent bg-accent text-background"
+          : "border-line text-foreground"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+// Відео вантажиться лише тоді, коли його відкрили, а не разом зі сторінкою.
+function VideoModal({
+  url,
+  t,
+  onClose,
+}: {
+  url: string;
+  t: Messages;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        className="flex max-h-full flex-col items-end gap-2"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-line bg-card px-3 py-1 text-sm text-foreground"
+        >
+          ✕ {t.close}
+        </button>
+        <video
+          src={url}
+          controls
+          autoPlay
+          playsInline
+          className="max-h-[85vh] max-w-full rounded-lg bg-black"
+        />
+      </div>
+    </div>
   );
 }
 
